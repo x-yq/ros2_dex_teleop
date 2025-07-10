@@ -1,0 +1,8 @@
+# Request
+string collection_id
+bool force_stop
+---
+# Response
+bool success
+string message
+string output_path

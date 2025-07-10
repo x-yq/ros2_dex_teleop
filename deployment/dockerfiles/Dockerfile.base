@@ -1,5 +1,5 @@
 # For CPU-only:
-FROM osrf/ros:humble-ros-core
+FROM ros:humble
 
 # Set the working directory
 WORKDIR /root/
@@ -23,8 +23,6 @@ ENV ROS_DISTRO=humble
 
 # Install essential tools and libraries in a single RUN command
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ros-humble-rosidl-generator-c \
-    ros-humble-rosidl-generator-py \
     python3-pip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 

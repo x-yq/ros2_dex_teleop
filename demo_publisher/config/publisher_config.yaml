@@ -1,0 +1,8 @@
+multi_topic_publisher:
+  ros__parameters:
+    arm_joint_states_freq: 50.0
+    hand_joint_states_freq: 50.0
+    hand_keypoint_freq: 30.0
+    viz_sensor_freq: 10.0
+    sensor_id: "camera_0"
+    simulation_mode: true

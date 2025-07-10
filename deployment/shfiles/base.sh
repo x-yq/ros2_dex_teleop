@@ -2,6 +2,8 @@
 # Print environment details
 echo "Path to log: $SRC/log/"
 
+DEV=${DEV:-true}
+
 if [ -d $WS ]; then
     rm -r $WS
 fi 
@@ -16,11 +18,12 @@ fi
 
 if [ "$DEV" = "true" ]; then 
     echo "Development mode enabled: Creating symlinks for each ros2 pkg to ros workspace src" 
-    ln -s $SRC/pkg_name/ $WS_SRC
+    ln -s $SRC/interfaces/ $WS_SRC
+    ln -s $SRC/deployment/ $WS_SRC
 else 
     echo "Development mode disabled: Copying source files to workspace $WS_SRC"
-    cp -r $SRC/pkg_name/ $WS_SRC
-fi
+    cp -r $SRC/interfaces/ $WS_SRC
+    cp -r $SRC/deployment/ $WS_SRC
 
 ## TODO: setup third-party repo here
 cd $WS_SRC

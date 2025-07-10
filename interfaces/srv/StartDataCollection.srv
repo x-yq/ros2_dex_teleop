@@ -1,0 +1,9 @@
+# Request
+string[] topics
+float64 duration
+string output_directory
+---
+# Response
+bool success
+string message
+string collection_id
