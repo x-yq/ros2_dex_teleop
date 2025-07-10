@@ -1,0 +1,31 @@
+services:
+  service_name:
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.base
+    command: ["/src/deployment/shfiles/base.sh"]  
+    network_mode: "host"
+    ipc: "host"
+    security_opt:
+      - seccomp=unconfined
+    privileged: true
+    working_dir: /root
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=${HOME}/.Xauthority
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/src
+      - ${HOME}/.Xauthority:${HOME}/.Xauthority
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
+      - /tmp/argus_socket:/tmp/argus_socket
+      - /run/udev:/run/udev
+      - /dev:/dev
+    cap_add:
+      - SYS_PTRACE
+    devices:
+      - /dev
+    device_cgroup_rules:
+      - 'c *:* rmw'

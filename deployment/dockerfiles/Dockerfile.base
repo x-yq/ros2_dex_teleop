@@ -1,0 +1,32 @@
+# For CPU-only:
+FROM osrf/ros:humble-ros-core
+
+# Set the working directory
+WORKDIR /root/
+
+# Suppress specific Python warnings
+ENV PYTHONWARNINGS="ignore:easy_install command is deprecated,ignore:setup.py install is deprecated"
+
+# Define directory-related environment variables
+ENV SRC="/src" \
+    WS="/root/dev_ws" \
+    WS_SRC="/root/dev_ws/src" \
+    ROS_LOG_DIR="/src/log/"
+
+# Accept build-time arguments
+ARG DEV
+ARG ROS_DISTRO
+
+# Export runtime environment variables
+ENV DEV=${DEV}
+ENV ROS_DISTRO=humble
+
+# Install essential tools and libraries in a single RUN command
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ros-humble-rosidl-generator-c \
+    ros-humble-rosidl-generator-py \
+    python3-pip \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Default command for the container
+CMD ["bash"]
