@@ -1,0 +1,9 @@
+# Request
+string layer_cn_id
+string log_level
+string message
+builtin_interfaces/Time timestamp
+---
+# Response
+bool success
+string message

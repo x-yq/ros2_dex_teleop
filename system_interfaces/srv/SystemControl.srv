@@ -1,0 +1,9 @@
+# Request
+string description
+string[] parameters
+---
+# Response
+bool success
+string system_state
+string message
+builtin_interfaces/Time timestamp

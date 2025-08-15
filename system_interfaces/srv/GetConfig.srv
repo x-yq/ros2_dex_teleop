@@ -1,0 +1,8 @@
+# Request
+string config_file_name
+string[] config_keys
+---
+# Response
+bool success
+string message
+string config_data

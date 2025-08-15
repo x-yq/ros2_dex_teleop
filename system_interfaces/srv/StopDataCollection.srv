@@ -1,0 +1,8 @@
+# Request
+string demo_id
+---
+# Response
+bool success
+string storage_path
+builtin_interfaces/Duration collection_duration
+string message

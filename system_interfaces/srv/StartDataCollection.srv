@@ -1,0 +1,13 @@
+# Request
+string demo_id
+string demo_root_path
+string description
+string[] topic_ids
+string video_codec
+string storage_format
+---
+# Response
+bool success
+string[] topic_ids
+string storage_path
+builtin_interfaces/Time start_time

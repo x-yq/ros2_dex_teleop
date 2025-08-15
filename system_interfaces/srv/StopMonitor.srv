@@ -1,0 +1,9 @@
+# Request
+string monitor_session_id
+---
+# Response
+bool success
+string hardware_id
+string container_id
+builtin_interfaces/Duration monitor_duration
+string results_file_path

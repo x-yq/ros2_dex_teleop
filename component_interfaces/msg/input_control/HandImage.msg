@@ -1,0 +1,3 @@
+std_msgs/Header header
+sensor_msgs/Image hand_image
+float64 detection_confidence
