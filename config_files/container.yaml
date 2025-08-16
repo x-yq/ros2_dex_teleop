@@ -1,0 +1,18 @@
+platforms:
+  - hardware_id: jetson_1 # hardware_id, must be a execution platform
+    containers:
+      - name: snesor_drivers
+        dockerfile: ./docker/Dockerfile.driver # e.g.
+        nodes: # must be the layer_cn_id
+          - sensor_driver_cam_0 # e.g.
+          - sensor_driver_oculus_0 # e.g.
+        env:
+          DISPLAY: 0 # optional
+        network:
+          ipc: host
+          net: host
+        permissions:
+          privileged: true
+        volume:
+          workdir_local: /home/user/dev_ws # src repo to be cp to the container
+          workdir_container: /root/dev_ws/src # dst repo in the container

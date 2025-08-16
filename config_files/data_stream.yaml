@@ -1,0 +1,37 @@
+topics:
+  - id: left_hand_keypoint # also topic name
+    msg_type: system_interfaces/msg/RawHandKeypoint
+    publish_freq: 90 # in hz
+    frame_id: oculus # must be one of the frame ids defined in the calibration.yaml
+    publisher: hand_tracker ## must be layer_cn_id
+    subscribers: [motion_transformer] # could be multi subscribers
+    shape: (4,4) # for data collection based on robo-dm
+    dtype: float32 # for data collection based on robo-dm
+  
+  - id: right_hand_keypoint # also topic name
+    msg_type: custom_msgs/msg/HandKeypoint
+    publish_freq: 90
+    frame_id: oculus
+    publisher: hand_tracker
+    subscribers: [motion_transformer]
+    shape: (4,4) 
+    dtype: float32 
+
+  - id: robot_state 
+    msg_type: custom_msgs/msg/ArmJointState
+    publish_freq: 90
+    frame_id: xarm_robot_base
+    publisher: xarm_robot_driver
+    subscribers: [feedback_data_processor]
+    shape: (7,1) 
+    dtype: float32
+
+  - id: feedback_img
+    msg_type: sensor_msgs/msg/SceneImage
+    publish_freq: 30
+    frame_id: realsense_0
+    publisher: sensor_driver_cam_0
+    subscribers: [feedback_projector_0]
+    encoding: rgb8
+    shape: (640,480,3)
+    dtype: unit8

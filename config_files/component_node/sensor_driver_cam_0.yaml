@@ -1,0 +1,49 @@
+# each layer-cn plugin setup
+layer_cn_id: sensor_driver_cam_0 ## must be node name
+pkg_name: feedback_sensor_driver ## ros2 pkg name
+
+meta:
+  description: "Capture and process camera sensor input"
+  layer: driver
+  type: [feedback_sensor] # input_device or feedback_sensor, could be both
+  priority: 1
+  ros2_domain_id: None # optional
+  
+# fallback plugin
+default_plugin: realsense_driver
+
+plugins:
+  - id: realsense_driver
+    class_path: my_pkg.sensor_drivers.RealsenseCamera
+    priority: 1
+    params: # for node with plugin initialization
+      cam_ids: []
+      width: 1280
+      height: 720
+      fps: 30
+      fps_sim: 60
+      rotation_angle: 0
+      processing_preset: 1
+      constants:
+        VISUAL_RESCALE_FACTOR: 2
+        VIZ_PORT_OFFSET: 500
+        DEPTH_PORT_OFFSET: 1000
+
+  - id: fish_eye_driver
+    class_path: my_pkg.sensor_drivers.FishEyeCamera
+    priority: 2
+    params:
+      cam_ids: [24, 26] 
+      width: 640
+      height: 480
+      fps: 30
+
+  - id: robot_cam
+    class_path: my_pkg.sensor_drivers.RoboCamera
+    priority: 3
+    params:
+      width: 640
+      height: 480
+      fps: 30
+      robot_cam_serial_numbers: ['141722071999', '138422075648', '023422073116']
+

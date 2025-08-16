@@ -1,0 +1,251 @@
+# Simplified Calibration Document for TF Manager Node
+# 用户完成校准后提供给tf manager的简化校准文档, 用户自己定义
+## TODO: 加上intra device的dynamic tranform校准
+### 1. intra-input-device: fingers to hand palm to wrist
+### 2. intra-robot: robot eef and each links to base link (see the DH params)
+
+# ==============================================================================
+# 校准变换矩阵 - 核心部分，用户必须提供准确的校准结果
+# ==============================================================================
+
+frame_ids: ## could include the frame that not definded in the following part, just for ros2 interface data.
+  hardware_id:
+    - oculus
+    - xarm5_robot
+    - realsense_0
+    - ...
+
+  other:
+    - world
+    - oculus_hand_right
+    - xarm5_robot_eef
+    - ...
+
+
+
+general_calibration_transforms:
+  # 1. 输入设备到世界坐标系的校准
+  input_to_world:
+    source_frame_id: oculus        # if the hardware base, use the hardware id, else user self defined
+    target_frame_id: world         # target frame id
+    transform:
+      translation: [1.5, 0.0, 0.0]           # [x, y, z] in meters
+      rotation: [0.0, 0.0, 0.0, 1.0]         # quaternion [x, y, z, w]
+    
+  # 2. 机器人基座到世界坐标系的校准
+  robot_to_world:
+    source_frame_id: xarm5_robot
+    target_frame_id: world
+    transform:
+      translation: [0.0, 0.5, 0.8]
+      rotation: [0.0, 0.0, 0.707, 0.707]
+    
+  # 3. 反馈传感器到世界坐标系的校准
+  feedback_sensor_to_world:
+    source_frame_id: realsense_0
+    target_frame_id: world
+    transform:
+      translation: [0.8, -0.3, 1.2]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    
+  # 4. 输入设备到机器人的相对校准 (关键变换)
+  input_to_robot:
+    source_frame_id: oculus_hand_right
+    target_frame_id: xarm5_robot_eef
+    transform:
+      translation: [0.0, 0.0, 0.0]          
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_dynamic: true                         
+    
+  # 5. 反馈传感器到机器人的校准
+  feedback_sensor_to_robot:
+    source_frame_id: realsense_0
+    target_frame_id: xarm5_robot
+    transform:
+      translation: [0.8, -0.8, 0.4]
+      rotation: [-0.5, 0.5, -0.5, 0.5]
+
+# ==============================================================================
+# 场景0: 真实世界 - VR头盔/动捕手套 + xArm5 + RealSense
+# ==============================================================================
+scenario_0_transforms:
+  vr_to_world:
+    source_frame_id: oculus_hand_right # or mocap_right
+    target_frame_id: world
+    transform:
+      translation: [2.0, 1.0, 0.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+      
+  robot_to_world:
+    source_frame_id: xarm5_robot
+    target_frame_id: world
+    transform:
+      translation: [0.0, 0.0, 0.8]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+      
+  camera_to_world:
+    source_frame_id: realsense_0
+    target_frame_id: world
+    transform:
+      translation: [1.5, -0.5, 1.2]
+      rotation: [0.0, 0.0, -0.707, 0.707]
+      
+  # 最关键的校准 - VR控制器到机器人末端
+  vr_controller_to_robot_tool:
+    source_frame_id: oculus_hand_right
+    target_frame_id: xarm5_robot_eef
+    transform:
+      translation: [0.0, 0.0, 0.0]    # 动态计算的基础偏移
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_dynamic: true
+    mapping_type: "direct_pose"       # 直接位姿映射
+
+# ==============================================================================
+# 场景1: Gazebo仿真 - 动捕手套 + xArm5 + 仿真相机
+# ==============================================================================
+scenario_1_transforms:
+  mocap_to_gazebo_world:
+    source_frame_id: mocap
+    target_frame_id: gazebo_world
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+      
+  # 真实MoCap设备到仿真机器人的映射
+  mocap_hand_to_sim_robot:
+    source_frame_id: mocap_right
+    target_frame_id: gazebo_xarm5_eef
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_dynamic: true
+    mapping_type: "scaled_pose"       # 缩放位姿映射
+    scale_factor: 2.0                 # 手部动作放大2倍
+    
+  # 仿真中的已知精确变换
+  sim_robot_to_gazebo_world:
+    source_frame_id: gazebo_xarm5
+    target_frame_id: gazebo_world
+    transform:
+      translation: [0.0, 0.0, 1.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_simulated: true                # 标记为仿真中的精确变换
+    
+  sim_camera_to_gazebo_world:
+    source_frame_id: sim_camera_link
+    target_frame_id: gazebo_world
+    transform:
+      translation: [1.5, 0.0, 1.2]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_simulated: true
+
+# ==============================================================================
+# 场景2: LIBERO仿真 - VR头盔 + Franka Panda
+# ==============================================================================
+scenario_2_transforms:
+  vr_to_libero_world:
+    source_frame_id: oculus
+    target_frame_id: libero_world
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+      
+  vr_controller_to_panda_hand:
+    source_frame_id: oculus
+    target_frame_id: libero_panda
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_dynamic: true
+    mapping_type: "workspace_scaled"   # 工作空间缩放映射
+    workspace_scale: 0.5              # VR空间缩放到50%
+    
+  # LIBERO中的精确变换
+  panda_to_libero_world:
+    source_frame_id: libero_panda
+    target_frame_id: libero_world
+    transform:
+      translation: [0.0, 0.0, 0.0]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_simulated: true
+    
+  libero_camera_to_world:
+    source_frame_id: libero_camera_link
+    target_frame_id: libero_world
+    transform:
+      translation: [0.8, 0.0, 1.5]
+      rotation: [0.0, 0.0, 0.0, 1.0]
+    is_simulated: true
+
+# ==============================================================================
+# 动态映射配置 (用于实时变换计算)
+# ==============================================================================
+dynamic_mapping_configs:
+  # VR控制器到机器人末端的映射配置
+  vr_to_robot_mapping:
+    source_frame_id: oculus_hand_right
+    target_frame_id: xarm5_robot_eef
+    mapping_parameters:
+      position_scale: [1.0, 1.0, 1.0]        # xyz位置缩放因子
+      rotation_mode: "direct"                  # 旋转映射模式: "direct", "filtered", "constrained"
+      position_filter: "low_pass"             # 位置滤波: "none", "low_pass", "kalman"
+      rotation_filter: "slerp"                # 旋转滤波: "none", "slerp", "quaternion_filter"
+      deadzone_radius: 0.005                  # 死区半径 (meters)
+      max_velocity: 0.5                       # 最大速度 (m/s)
+      max_acceleration: 2.0                   # 最大加速度 (m/s^2)
+      
+  # 动捕手套到机器人的映射配置  
+  mocap_to_robot_mapping:
+    source_frame_id: mocap_right
+    target_frame_id: gazebo_xarm5_eef
+    mapping_parameters:
+      position_scale: [2.0, 2.0, 2.0]        # 手部动作放大2倍
+      rotation_mode: "filtered"
+      workspace_bounds:                        # 工作空间限制
+        x_range: [-0.5, 0.5]
+        y_range: [-0.5, 0.5] 
+        z_range: [0.1, 0.8]
+      finger_mapping:                         # 手指到夹爪的映射
+        grip_threshold: 0.7                   # 握拳阈值
+        release_threshold: 0.3                # 松手阈值
+
+# ==============================================================================
+# 最小必需参数模板
+# ==============================================================================
+minimal_required_transforms:
+  # 每个场景的最小必需变换
+  scenario_0_minimal:
+    - source_frame_id: oculus
+      target_frame_id: world
+      transform: [null, null, null, null, null, null, null]  # [x,y,z,qx,qy,qz,qw]
+      
+    - source_frame_id: xarm5_robot
+      target_frame_id: world
+      transform: [null, null, null, null, null, null, null]
+      
+    - source_frame_id: oculus_hand_right
+      target_frame_id: xarm5_robot_eef 
+      transform: [null, null, null, null, null, null, null]
+      is_dynamic: true
+
+  scenario_1_minimal:
+    - source_frame_id: mocap
+      target_frame_id: gazebo_world
+      transform: [null, null, null, null, null, null, null]
+      
+    - source_frame_id: mocap_right
+      target_frame_id: gazebo_xarm5_eef
+      transform: [null, null, null, null, null, null, null]
+      is_dynamic: true
+      scale_factor: null
+
+  scenario_2_minimal:
+    - source_frame_id: oculus
+      target_frame_id: libero_world
+      transform: [null, null, null, null, null, null, null]
+      
+    - source_frame_id: oculus_hand_right
+      target_frame_id: libero_panda
+      transform: [null, null, null, null, null, null, null]
+      is_dynamic: true
+      workspace_scale: null

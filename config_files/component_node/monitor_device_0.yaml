@@ -1,0 +1,25 @@
+layer_cn_id: monitor_device_0   # node name (monitor_id)
+pkg_name: monitor_interface     # ros2 package name
+
+meta:
+  description: "Monitor system and container KPIs"
+  layer: management
+  type: [monitor]
+  priority: 1
+  ros2_domain_id: None
+
+default_plugin: docker_monitor
+
+plugins:
+  - id: docker_monitor
+    class_path: monitor_interface.plugins.docker_monitor.DockerMonitor
+    priority: 1
+    params:
+      poll_rate: 2.0
+      container_ids: ["abc123", "xyz456"]
+
+  - id: system_monitor
+    class_path: monitor_interface.plugins.system_monitor.SystemMonitor
+    priority: 2
+    params:
+      poll_rate: 5.0

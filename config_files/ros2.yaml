@@ -1,0 +1,13 @@
+middleware:
+  rmw: rmw_fastrtps_cpp
+  protocol: DDS
+  bridge:
+    - from_domain: 0
+      to_domain: 1
+      topics:
+        - hand_img
+        - hand_keypoint
+    - from_domain: 1
+      to_domain: 2
+      topics:
+        - robot_joint_state

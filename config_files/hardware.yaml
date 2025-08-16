@@ -1,0 +1,59 @@
+hardware:
+  - hardware_id: host_server
+    execution_plattform: true # if this is a pc or server for driver or algorithm
+    ip: 192.168.1.101
+    access_port: 22
+    ssh:
+      username: ubuntu
+      password: passexample
+
+  - hardware_id: jetson_1
+    execution_plattform: true
+    ip: 192.168.1.100
+    access_port: 22
+    ssh:
+      username: ubuntu
+      password: passexample
+
+  - hardware_id: realsense_0
+    execution_plattform: false
+    driver_layer_cn_id: sensor_driver_cam_0
+    ip: 192.168.1.102
+    access_port: 22
+    ssh:
+      username: ubuntu
+      password: passexample
+    ports: 
+      VIZ_PORT_OFFSET: 500
+      DEPTH_PORT_OFFSET: 1000
+      cam_port_offset:  10005
+
+
+  - hardware_id: oculus
+    execution_plattform: false
+    driver_layer_cn_id: sensor_driver_oculus_0
+    ip: 192.168.1.103
+    access_port: 22
+    ports: 
+      oculus_reciever_port: 8087
+      left_hand_receiver_port: 8110
+      keypoint_port: 8088
+      transformed_position_keypoint_port: 8089
+      transformed_position_left_keypoint_port: 8099
+      transformed_velocity_keypoint_port: 8090
+      oculus_graph_port: 15001
+      pre_action_thumb_ee_position_port: 8091
+      post_action_thumb_ee_position_port: 8092
+      sim_image_port: 10005
+
+  - hardware_id: fisheye
+    execution_plattform: false
+    driver_layer_cn_id: sensor_driver_cam_0
+    ip: 192.168.1.104
+    access_port: 22
+    ports: 
+      fish_eye_cam_port_offset: 10010
+
+
+
+
