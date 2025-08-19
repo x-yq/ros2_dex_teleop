@@ -11,7 +11,9 @@
   <buildtool_depend>setuptools</buildtool_depend>
 
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>system_manager_interfaces</exec_depend>
+  <exec_depend>system_interfaces</exec_depend>
+  <exec_depend>component_interfaces</exec_depend>
+
 
   <export>
     <build_type>ament_python</build_type>

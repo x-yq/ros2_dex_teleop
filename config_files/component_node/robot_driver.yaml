@@ -1,0 +1,21 @@
+# /root/dev_ws/src/robot_driver/robot_driver/plugins/xarm5_driver.py: XArm5Driver
+
+layer_cn_id: robot_driver
+pkg_name: robot_driver
+
+meta:
+  description: "Robot driver"
+  layer: driver
+  type: [robot_driver]
+  priority: 1
+  ros2_domain_id: None # optional
+  
+# fallback plugin
+default_plugin: xarm5_driver
+
+plugins:
+  - id: xarm5_driver
+    _target_: robot_driver.robot_driver.plugins.xarm5_driver.XArm5Driver
+    priority: 1
+    params: # for node with plugin initialization
+      freq: 90

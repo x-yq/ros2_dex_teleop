@@ -1,0 +1,35 @@
+hardware:
+  - hardware_id: mac_pc
+    execution_plattform: true # if this is a pc or server for driver or algorithm
+    ip: 127.0.0.1
+    access_port: 22
+
+  - hardware_id: render_pc # feedback projector and its driver
+    execution_plattform: true # if this is a pc or server for driver or algorithm
+    ip:  192.168.1.100
+    access_port: 22
+
+  - hardware_id: jetson # feedback sensor driver
+    execution_plattform: true
+    ip: 192.168.50.107
+    access_port: 22
+
+  - hardware_id: rococo # input sensor
+    execution_plattform: false
+    driver_layer_cn_id: sensor_driver_rococo
+    ip: 192.168.1.103
+    access_port: 22
+
+
+  - hardware_id: xarm5_robot
+    execution_plattform: false
+    driver_layer_cn_id: xarm5_robot
+    ip: 192.168.1.108
+    access_port: 22
+
+  - hardware_id: realsense # feedback sensor
+    execution_plattform: false
+    driver_layer_cn_id: sensor_driver_realsense
+    ip: 192.168.1.101
+    access_port: 22
+

@@ -19,6 +19,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/StopDataCollection.srv"
   "srv/StartMonitor.srv"
   "srv/StopMonitor.srv"
+  "srv/GetStatus.srv"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 

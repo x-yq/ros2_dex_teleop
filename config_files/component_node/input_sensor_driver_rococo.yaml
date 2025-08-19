@@ -1,0 +1,21 @@
+# each layer-cn plugin setup
+layer_cn_id: input_sensor_driver_rococo
+pkg_name: input_sensor_driver
+
+meta:
+  description: "Capture and process rococo gloves sensor input"
+  layer: driver
+  type: [input_sensor] # input_sensor or feedback_sensor, could be both
+  priority: 1
+  ros2_domain_id: None # optional
+  
+# fallback plugin
+default_plugin: rococo_driver
+
+plugins:
+  - id: rococo_driver
+    _target_: input_sensor_driver.input_sensor_driver.plugins.mocap.RococoDriver
+    priority: 1
+    params: # for node with plugin initialization
+      freq: 60
+

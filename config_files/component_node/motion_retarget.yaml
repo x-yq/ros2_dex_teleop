@@ -1,0 +1,21 @@
+##/root/dev_ws/src/motion_retarget/motion_retarget/plugins/motion_retarget_ot.py: MotionRetargetOT
+
+layer_cn_id: motion_retarget
+pkg_name: motion_retarget
+
+meta:
+  description: "Retarget the input control data to motion cmd in robot space"
+  layer: algorithm
+  type: [motion_retarget]
+  priority: 1
+  ros2_domain_id: None # optional
+  
+# fallback plugin
+default_plugin: rococo_driver
+
+plugins:
+  - id: rococo_driver
+    _target_: motion_retarget.motion_retarget.plugins.motion_retarget_ot.MotionRetargetOT
+    priority: 1
+    params: # for node with plugin initialization
+      freq: 90

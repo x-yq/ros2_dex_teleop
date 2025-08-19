@@ -6,7 +6,7 @@ import rclpy
 from hydra.utils import instantiate
 
 
-@hydra.main(version_base=None, config_path=None, config_name=None)
+@hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="monitor_0")
 def main(cfg: DictConfig):
     """
     Main entrypoint for KPI Monitor Node.

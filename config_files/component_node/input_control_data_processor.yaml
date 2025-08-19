@@ -1,0 +1,39 @@
+# each layer-cn plugin setup
+layer_cn_id: input_control_data_processor ## must be node name
+pkg_name: input_data_processor ## ros2 pkg name
+
+meta:
+  description: "Process the input raw keypoint data"
+  layer: algorithm
+  type: [input_data] # input_data or feedback_data
+  priority: 1
+  ros2_domain_id: None # optional
+  
+# fallback plugin
+default_plugin: rococo_handkeypoint
+
+plugins:
+  - id: rococo_handkeypoint
+    _target_: input_data_processor.input_data_processor.plugins.mocap_data_processor.RococoHandKeypointProcessor
+    priority: 1
+    params: # for node with plugin initialization
+      frequency: 90
+
+  # - id: fish_eye_driver
+  #   _target_: my_pkg.sensor_drivers.FishEyeCamera
+  #   priority: 2
+  #   params:
+  #     cam_ids: [24, 26] 
+  #     width: 640
+  #     height: 480
+  #     fps: 30
+
+  # - id: robot_cam
+  #   _target_: my_pkg.sensor_drivers.RoboCamera
+  #   priority: 3
+  #   params:
+  #     width: 640
+  #     height: 480
+  #     fps: 30
+  #     robot_cam_serial_numbers: ['141722071999', '138422075648', '023422073116']
+

@@ -1,0 +1,22 @@
+# /root/dev_ws/src/feedback_projector_driver/feedback_projector_driver/plugins/render_pc_driver.py: RenderPCDriver
+
+layer_cn_id: feedback_projector_driver ## must be node name
+pkg_name: feedback_projector_driver ## ros2 pkg name
+
+meta:
+  description: "Project or vizualize feedback data"
+  layer: driver
+  type: [feedback_projector] # input_device or feedback_projector, could be both
+  priority: 1
+  ros2_domain_id: None # optional
+  
+# fallback plugin
+default_plugin: realsense_driver
+
+plugins:
+  - id: 
+    _target_: feedback_projector_driver.feedback_projector_driver.plugins.render_pc_driver.RenderPCDriver
+    priority: 1
+    params: # for node with plugin initialization
+      width: 1280
+      height: 720

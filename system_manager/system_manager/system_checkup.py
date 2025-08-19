@@ -123,45 +123,139 @@ class SystemCheckup:
         
         return overall_hw_status
         
-    def check_cn_connection(self, layer_cn_config_folder):
-        ## NOTE: dummy impl
-        """Check component node connections"""
+    # def check_cn_connection(self, layer_cn_config_folder):
+    #     ## NOTE: dummy impl
+    #     """Check component node connections"""
         
-        # Load expected nodes from component node config files
+    #     # Load expected nodes from component node config files
+    #     expected_nodes = self._load_component_node_configs(layer_cn_config_folder)
+        
+    #     if not expected_nodes:
+    #         self.logger.error("No component nodes found in config folder")
+    #         return True  # Return True if no nodes expected
+            
+    #     # In real implementation, use ros2 node discovery
+    #     # discovered_nodes = subprocess.run(['ros2', 'node', 'list'], capture_output=True, text=True)
+        
+    #     # Dummy implementation - simulate partial discovery
+    #     discovered_nodes = expected_nodes[:max(1, len(expected_nodes)//2)]  # Simulate partial discovery
+    #     node_status = {}
+        
+    #     for node in expected_nodes:
+    #         if node in discovered_nodes:
+    #             node_status[node] = {
+    #                 'discovered': True,
+    #                 'responsive': True,  # Could ping node services
+    #                 'status': 'online'
+    #             }
+    #         else:
+    #             node_status[node] = {
+    #                 'discovered': False,
+    #                 'responsive': False,
+    #                 'status': 'missing'
+    #             }
+    #             self.logger.error(f"Expected node {node} not discovered")
+                
+    #     self.result['component_nodes'] = node_status
+    #     overall_cn_status = all(node['status'] == 'online' for node in node_status.values())
+        
+    #     self.logger.info(f"Component node check completed. Found {len(discovered_nodes)}/{len(expected_nodes)} nodes")
+            
+    #     return overall_cn_status
+
+    def check_cn_connection(self, layer_cn_config_folder, timeout=30):
+        """
+        Check ComponentNode connections and lifecycle:
+        1. Wait until all nodes are discovered (up to timeout).
+        2. Call each node's get_status service to check lifecycle.
+        """
         expected_nodes = self._load_component_node_configs(layer_cn_config_folder)
-        
+        node_status = {}
+
         if not expected_nodes:
             self.logger.error("No component nodes found in config folder")
-            return True  # Return True if no nodes expected
-            
-        # In real implementation, use ros2 node discovery
-        # discovered_nodes = subprocess.run(['ros2', 'node', 'list'], capture_output=True, text=True)
-        
-        # Dummy implementation - simulate partial discovery
-        discovered_nodes = expected_nodes[:max(1, len(expected_nodes)//2)]  # Simulate partial discovery
-        node_status = {}
-        
-        for node in expected_nodes:
-            if node in discovered_nodes:
-                node_status[node] = {
-                    'discovered': True,
-                    'responsive': True,  # Could ping node services
-                    'status': 'online'
-                }
-            else:
+            return True
+
+        # 1. 等待所有节点出现
+        start_time = time.time()
+        discovered_nodes = []
+        while time.time() - start_time < timeout:
+            try:
+                result = subprocess.run(
+                    ['ros2', 'node', 'list'],
+                    capture_output=True,
+                    text=True,
+                    check=True
+                )
+                discovered_nodes = result.stdout.splitlines()
+            except Exception as e:
+                self.logger.error(f"Node discovery failed: {e}")
+                break
+
+            if set(expected_nodes).issubset(set(discovered_nodes)):
+                break
+            time.sleep(1)
+
+        missing_nodes = set(expected_nodes) - set(discovered_nodes)
+        if missing_nodes:
+            for node in missing_nodes:
                 node_status[node] = {
                     'discovered': False,
-                    'responsive': False,
+                    'lifecycle': 'unknown',
                     'status': 'missing'
                 }
-                self.logger.error(f"Expected node {node} not discovered")
-                
-        self.result['component_nodes'] = node_status
-        overall_cn_status = all(node['status'] == 'online' for node in node_status.values())
-        
-        self.logger.info(f"Component node check completed. Found {len(discovered_nodes)}/{len(expected_nodes)} nodes")
-            
-        return overall_cn_status
+                self.logger.error(f"Node {node} not discovered")
+            self.result['plugins'] = node_status
+            return False
+
+        # 2. 检查每个节点的 lifecycle
+        rclpy.init(args=None)
+        tmp_node = rclpy.create_node("system_checkup_client")
+
+        for node in expected_nodes:
+            lifecycle_state = "unknown"
+            try:
+                client = tmp_node.create_client(GetStatus, f"{node}/get_status")
+                if not client.wait_for_service(timeout_sec=5.0):
+                    raise RuntimeError("get_status service not available")
+
+                req = GetStatus.Request()
+                future = client.call_async(req)
+                rclpy.spin_until_future_complete(tmp_node, future, timeout_sec=5.0)
+
+                if future.result() and future.result().success:
+                    lifecycle_state = future.result().lifecycle
+                else:
+                    lifecycle_state = "error"
+
+                status = 'online' if lifecycle_state == 'ready' else 'offline'
+                node_status[node] = {
+                    'discovered': True,
+                    'lifecycle': lifecycle_state,
+                    'status': status
+                }
+
+            except Exception as e:
+                node_status[node] = {
+                    'discovered': True,
+                    'lifecycle': 'error',
+                    'status': 'error',
+                    'error': str(e)
+                }
+                self.logger.error(f"Failed to get lifecycle for {node}: {e}")
+
+        rclpy.shutdown()
+
+        self.result['plugins'] = node_status
+        overall_status = all(n['status'] == 'online' for n in node_status.values())
+
+        self.logger.info(
+            f"CN connection & plugin check completed. "
+            f"{len(node_status)}/{len(expected_nodes)} nodes configured. "
+            f"Status: {'PASS' if overall_status else 'FAIL'}"
+        )
+
+        return overall_status
         
     def check_plugin_format(self, plugin_configs=None):
         """Check plugin format validation"""
@@ -225,14 +319,12 @@ class SystemCheckup:
         checkup_results = {
             'hardware': self.check_hardware_connection(hardware_config_path),
             'component_nodes': self.check_cn_connection(layer_cn_config_folder),
-            'plugins': self.check_plugin_format(plugin_configs),
             'timestamp': datetime.now().isoformat()
         }
         
         checkup_results['overall_status'] = all([
             checkup_results['hardware'],
-            checkup_results['component_nodes'], 
-            checkup_results['plugins']
+            checkup_results['component_nodes'] 
         ])
         
         status_msg = "PASS" if checkup_results['overall_status'] else "FAIL"

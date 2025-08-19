@@ -4,7 +4,7 @@ from abc import abstractmethod
 import rclpy
 from builtin_interfaces.msg import Time, Duration
 
-from component_node import ComponentNode
+from .component_node import ComponentNode
 from system_manager_interfaces.srv import StartMonitor, StopMonitor
 
 
@@ -33,6 +33,7 @@ class KPIMonitorBase(ComponentNode):
             "stop_monitor",
             self.stop_monitor_srv_callback
         )
+        self.lifecycle = "ready"
 
     # ------------------------------------------------------------------
     # Abstract methods for subclasses (plugins must implement)

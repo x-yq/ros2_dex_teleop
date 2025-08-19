@@ -1,4 +1,4 @@
-# core_interfaces/component_node.py
+# src/core_bases/core_bases/component_node.py
 
 from abc import ABC, abstractmethod
 import rclpy
@@ -25,13 +25,9 @@ class ComponentNode(Node, ABC):
         # Clients to SystemManager
         self.logging_client = self.create_client(Logging, "logging")
         self.get_config_client = self.create_client(GetConfig, "get_config")
-
-        # Plugin management + topics
-        self.plugins: Dict[str, Any] = {}
-        self.subscribe_topics: List[str] = []
-        self.publish_topics: List[str] = []
-
-        self.timer = None
+        self.get_status_srv = self.create_service(
+            GetConfig, f"{self.layer_cn_id}/get_status", self.get_status_cb
+        )
 
         # Ensure services are ready
         self._wait_for_services()
@@ -39,6 +35,21 @@ class ComponentNode(Node, ABC):
     # ------------------------------------------------------------------
     # Service handling
     # ------------------------------------------------------------------
+
+    def _initialize_node(self):
+        """Initialize the node. Can be overwritten"""
+        self.get_logger().info(f"Initializing: {self.layer_cn_id}")
+        
+        # Register publishers and subscribers
+        self.register_pub_sub()
+        
+        # Verify plugins
+        if self.check_plugins():
+            self.lifecycle = "ready"
+            self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
+
+        else:
+            self.get_logger().warn(f"{self.layer_cn_id} unsuccessful")
 
     def _wait_for_services(self):
         """Block until SystemManager services are available."""
@@ -50,6 +61,12 @@ class ComponentNode(Node, ABC):
             while not client.wait_for_service(timeout_sec=2.0):
                 self.get_logger().warn(f"{name} service not available, retrying...")
         self.get_logger().info("All SystemManager services available")
+
+    def get_status_cb(self, request, response):
+        response.success = True
+        response.config_data = self.lifecycle
+        response.message = f"Lifecycle state for {self.layer_cn_id}"
+        return response
 
     def get_config(self, config_file_name: str, config_keys: Optional[List[str]] = None):
         """Fetch config data from SystemManager."""

@@ -4,8 +4,8 @@ platforms:
       - name: snesor_drivers
         dockerfile: ./docker/Dockerfile.driver # e.g.
         nodes: # must be the layer_cn_id
-          - sensor_driver_cam_0 # e.g.
-          - sensor_driver_oculus_0 # e.g.
+          - sensor_driver_rococo # e.g.
+          - sensor_driver_realsense # e.g.
         env:
           DISPLAY: 0 # optional
         network:
