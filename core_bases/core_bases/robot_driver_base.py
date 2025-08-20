@@ -22,69 +22,72 @@ class RobotDriverBase(ComponentNode, ABC):
         
         # Attributes
         self.simulated = simulated
-        self.robot_config: Dict[str, Dict[str, str]] = {}
         self.cmd_subscribers: Dict[str, Subscription] = {}
         self.state_publishers: Dict[str, Publisher] = {}
+
+        self.my_config: Dict[str, Any] = {}
+        self.hardware_config: Dict[str, Any] = {}
+        self.data_stream_config: Dict[str, Any] = {}
         
     @overwritten
     def _initialize_node(self):
         """Initialize the driver node."""
         self.get_logger().info(f"Initializing RobotDriverBase: {self.layer_cn_id}")
         
-        # Load projector configurations
-        self._load_robot_config()
+        # # Load projector configurations
+        # self._load_robot_config()
         
         # Register publishers and subscribers
         self.register_pub_sub()
         
         # Verify plugins
         if self.check_plugins():
-            self.lifecycle = "ready"
+            self.set_state("ready")
             self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
         else:
             self.get_logger().warn(f"{self.layer_cn_id} unsuccessful")
 
         self.get_logger().info("RobotDriverBase initialized successfully")
 
-    def _load_robot_config(self):
-        """Load robot configuration from hardware config files."""
-        try:
-            config_data = self.get_config("hardware.yaml")
-            if config_data:
-                # Handle both YAML and JSON formats
-                if config_data.strip().startswith('{'):
-                    hardware_config = json.loads(config_data)
-                else:
-                    hardware_config = yaml.safe_load(config_data)
+    # def _load_robot_config(self):
+    #     """Load robot configuration from hardware config files."""
+    #     try:
+    #         config_data = self.get_config("hardware.yaml")
+    #         if config_data:
+    #             # Handle both YAML and JSON formats
+    #             if config_data.strip().startswith('{'):
+    #                 hardware_config = json.loads(config_data)
+    #             else:
+    #                 hardware_config = yaml.safe_load(config_data)
                 
-                # Convert list format to dictionary for easier access
-                hardware_list = hardware_config.get('hardware', [])
-                self.robot_config = {}
+    #             # Convert list format to dictionary for easier access
+    #             hardware_list = hardware_config.get('hardware', [])
+    #             self.robot_config = {}
                 
-                for hw_item in hardware_list:
-                    if isinstance(hw_item, dict) and 'hardware_id' in hw_item:
-                        hardware_id = hw_item['hardware_id']
-                        # Create robot config entry with IP and access info
-                        robot_info = {
-                            'ip': hw_item.get('ip', ''),
-                            'access_port': hw_item.get('access_port', 22),
-                            'description': f"Robot on {hardware_id}",
-                            'execution_platform': hw_item.get('execution_plattform', False)
-                        }
+    #             for hw_item in hardware_list:
+    #                 if isinstance(hw_item, dict) and 'hardware_id' in hw_item:
+    #                     hardware_id = hw_item['hardware_id']
+    #                     # Create robot config entry with IP and access info
+    #                     robot_info = {
+    #                         'ip': hw_item.get('ip', ''),
+    #                         'access_port': hw_item.get('access_port', 22),
+    #                         'description': f"Robot on {hardware_id}",
+    #                         'execution_platform': hw_item.get('execution_plattform', False)
+    #                     }
                         
-                        # Add SSH info if available
-                        if 'ssh' in hw_item:
-                            robot_info.update(hw_item['ssh'])
+    #                     # Add SSH info if available
+    #                     if 'ssh' in hw_item:
+    #                         robot_info.update(hw_item['ssh'])
                             
-                        self.robot_config[hardware_id] = robot_info
+    #                     self.robot_config[hardware_id] = robot_info
                 
-                self.logging(f"Loaded robot config for hardware: {list(self.robot_config.keys())}", "INFO")
-                self.logging(f"Running in {'simulated' if self.simulated else 'physical'} mode", "INFO")
-            else:
-                self.logging("Failed to load robot configuration", "ERROR")
-        except Exception as e:
-            self.logging(f"Error loading robot config: {str(e)}", "ERROR")
-            self.robot_config = {}
+    #             self.logging(f"Loaded robot config for hardware: {list(self.robot_config.keys())}", "INFO")
+    #             self.logging(f"Running in {'simulated' if self.simulated else 'physical'} mode", "INFO")
+    #         else:
+    #             self.logging("Failed to load robot configuration", "ERROR")
+    #     except Exception as e:
+    #         self.logging(f"Error loading robot config: {str(e)}", "ERROR")
+    #         self.robot_config = {}
     
     # def get_robot_ip_port(self, robot_id: str) -> Optional[tuple]:
     #     """Get robot IP and port by robot ID."""

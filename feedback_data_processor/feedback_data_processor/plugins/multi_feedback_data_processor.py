@@ -1,7 +1,7 @@
 from core_bases.data_processor_base import DataProcessorBase
 from typing import Dict, List, Any, Optional
 import rclpy
-import yaml
+import json
 import numpy as np
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
@@ -33,113 +33,131 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         self.latest_scene_image = None
         self.latest_robot_state = None
         
-        # Initialize processing parameters
-        self._load_processor_config()
+        # # Initialize processing parameters
+        # self._load_processor_config()
 
         self._initialize_node()
-
-    def _load_processor_config(self):
-        """Load processor-specific configuration"""
-        try:
-            config_data = self.get_config("feedback_data_processor.yaml")
-            if config_data:
-                config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-                if "plugins" in config and len(config["plugins"]) > 0:
-                    plugin_params = config["plugins"][0].get("params", {})
-                    self.processing_types = plugin_params.get("types", self.processing_types)
-                    self.get_logger().info(f"Loaded processor config: {self.processing_types}")
-        except Exception as e:
-            self.get_logger().error(f"Failed to load processor config: {str(e)}")
+        self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for MultiFeedback specific setup"""
         self.get_logger().info(f"Initializing MultiFeedbackDataProcessor: {self.layer_cn_id}")
         
         # Register publishers and subscribers
+        self._load_configs()
         self.register_pub_sub()
         
         # # Start a timer for periodic dummy processing
         # self.dummy_processing_timer = self.create_timer(0.1, self.dummy_processing_callback)
         
-        self.lifecycle = "ready"
+        if self.check_plugins():
+            self.set_state("ready")
         self.get_logger().info("MultiFeedbackDataProcessor initialized successfully")
 
-    def register_pub_sub(self):
-        """Register publishers and subscribers based on data_stream.yaml configuration"""
-        try:
-            # Get data stream configuration
-            config_data = self.get_config("data_stream.yaml")
-            if config_data:
-                data_config = yaml.safe_load(config_data) if isinstance(config_data, str) else data_config
+    def _load_configs(self):
+            """Load all required configurations using ComponentNode methods"""
+            try:
+                # Load component-specific configuration
+                self.my_config = self.load_my_config()
+                if not self.my_config:
+                    self.get_logger().warn(f"No component config found for {self.layer_cn_id}")
+                    self.my_config = {}
                 
-                # Find topics where this node is a subscriber
-                if "topics" in data_config:
-                    for topic_config in data_config["topics"]:
-                        topic_id = topic_config["id"]
-                        
-                        # Subscribe to topics where this node is a subscriber
-                        if self.layer_cn_id in topic_config.get("subscribers", []):
-                            msg_type = topic_config["msg_type"]
-                            
-                            if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
-                                self.raw_data_subscribers[topic_id] = self.create_subscription(
-                                    ProcessedHandKeypoint,
-                                    topic_id,
-                                    self.hand_keypoint_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to hand keypoints: {topic_id}")
-                            
-                            elif msg_type == "sensor_msgs/msg/Image":
-                                self.raw_data_subscribers[topic_id] = self.create_subscription(
-                                    Image,
-                                    topic_id,
-                                    self.scene_image_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to scene image: {topic_id}")
-                            
-                            elif msg_type == "component_interfaces/msg/RobotState":
-                                self.raw_data_subscribers[topic_id] = self.create_subscription(
-                                    RobotState,
-                                    topic_id,
-                                    self.robot_state_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to robot state: {topic_id}")
-                        
-                        # Create publishers for topics where this node is the publisher
-                        if topic_config.get("publisher") == self.layer_cn_id:
-                            msg_type = topic_config["msg_type"]
-                            
-                            if msg_type == "component_interfaces/msg/SceneImage":
-                                self.processed_data_publishers[topic_id] = self.create_publisher(
-                                    SceneImage,
-                                    topic_id,
-                                    10
-                                )
-                                self.get_logger().info(f"Created publisher for processed scene image: {topic_id}")
-                            
-                            elif msg_type == "component_interfaces/msg/Hand2DPlotData":
-                                self.processed_data_publishers[topic_id] = self.create_publisher(
-                                    Hand2DPlotData,
-                                    topic_id,
-                                    10
-                                )
-                                self.get_logger().info(f"Created publisher for hand 2D plot: {topic_id}")
-                            
-                            elif msg_type == "component_interfaces/msg/RobotState":
-                                self.processed_data_publishers[topic_id] = self.create_publisher(
-                                    RobotState,
-                                    topic_id,
-                                    10
-                                )
-                                self.get_logger().info(f"Created publisher for processed robot state: {topic_id}")
+                # Load data stream configuration
+                self.data_stream_config = self.load_data_stream_config()
+                if not self.data_stream_config:
+                    self.get_logger().error("Failed to load data stream configuration")
+                    self.data_stream_config = {}
+                
+                # Override processing types from component config if available
+                if self.my_config and "plugins" in self.my_config:
+                    plugins = self.my_config["plugins"]
+                    if plugins and len(plugins) > 0:
+                        plugin_params = plugins[0].get("params", {})
+                        if "types" in plugin_params:
+                            self.processing_types = plugin_params["types"]
+                            self.get_logger().info(f"Loaded processing types from config: {self.processing_types}")
+                
+                self.get_logger().info("All configurations loaded successfully")
+                
+            except Exception as e:
+                self.handle_error("Failed to load configurations", e)
+
+    def register_pub_sub(self):
+        """Register publishers and subscribers based on data_stream configuration"""
+        try:
+            # Use the loaded data_stream_config instead of manually parsing YAML
+            if not self.data_stream_config or "topics" not in self.data_stream_config:
+                self.handle_error("Data stream configuration not available or invalid")
+                return
+                
+            # Find topics where this node is a subscriber or publisher
+            for topic_config in self.data_stream_config["topics"]:
+                topic_id = topic_config["id"]
+                
+                # Subscribe to topics where this node is a subscriber
+                if self.layer_cn_id in topic_config.get("subscribers", []):
+                    msg_type = topic_config["msg_type"]
+                    
+                    if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
+                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                            ProcessedHandKeypoint,
+                            topic_id,
+                            self.hand_keypoint_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to hand keypoints: {topic_id}")
+                    
+                    elif msg_type == "sensor_msgs/msg/Image":
+                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                            Image,
+                            topic_id,
+                            self.scene_image_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to scene image: {topic_id}")
+                    
+                    elif msg_type == "component_interfaces/msg/RobotState":
+                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                            RobotState,
+                            topic_id,
+                            self.robot_state_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to robot state: {topic_id}")
+                
+                # Create publishers for topics where this node is the publisher
+                if topic_config.get("publisher") == self.layer_cn_id:
+                    msg_type = topic_config["msg_type"]
+                    
+                    if msg_type == "component_interfaces/msg/SceneImage":
+                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                            SceneImage,
+                            topic_id,
+                            10
+                        )
+                        self.get_logger().info(f"Created publisher for processed scene image: {topic_id}")
+                    
+                    elif msg_type == "component_interfaces/msg/Hand2DPlotData":
+                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                            Hand2DPlotData,
+                            topic_id,
+                            10
+                        )
+                        self.get_logger().info(f"Created publisher for hand 2D plot: {topic_id}")
+                    
+                    elif msg_type == "component_interfaces/msg/RobotState":
+                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                            RobotState,
+                            topic_id,
+                            10
+                        )
+                        self.get_logger().info(f"Created publisher for processed robot state: {topic_id}")
             
             self.get_logger().info("All publishers and subscribers registered successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Failed to register publishers/subscribers: {str(e)}")
+            self.handle_error("Failed to register publishers/subscribers", e)
 
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
@@ -183,7 +201,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             self.get_logger().debug("Hand data processing completed successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Error processing hand data: {str(e)}")
+            self.handle_error(f"Error processing hand data: ", e)
 
     def process_scene_image(self, image_data: Image):
         """Process raw scene image"""
@@ -200,7 +218,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             self.get_logger().debug("Scene image processing completed successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Error processing scene image: {str(e)}")
+            self.handle_error(f"Error processing scene image: ", e)
 
     def process_robot_state(self, robot_data: RobotState):
         """Process robot state for visualization"""
@@ -217,25 +235,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             self.get_logger().debug("Robot state processing completed successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Error processing robot state: {str(e)}")
-
-    # def dummy_processing_callback(self):
-    #     """Generate and process dummy feedback data"""
-    #     if self.is_processing_active:
-    #         self.get_logger().debug("Generating and processing dummy feedback data")
-            
-    #         # Process dummy data for each enabled processing type
-    #         if "hand_2d_plot" in self.processing_types:
-    #             dummy_hand = self._create_dummy_hand_keypoints()
-    #             self.process_hand_data(dummy_hand)
-            
-    #         if "scene_img" in self.processing_types:
-    #             dummy_image = self._create_dummy_scene_image()
-    #             self.process_scene_image(dummy_image)
-            
-    #         if "robot_state_plot" in self.processing_types:
-    #             dummy_robot = self._create_dummy_robot_state()
-    #             self.process_robot_state(dummy_robot)
+            self.handle_error("Error processing robot state: ", e)
 
     def _generate_2d_plot_data(self, hand_data: ProcessedHandKeypoint) -> Hand2DPlotData:
         """Generate 2D plot data from 3D hand keypoints"""
@@ -292,7 +292,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.get_logger().error(f"Required method '{method_name}' not implemented")
+                self.handle_error(f"Required method '{method_name}' not implemented")
                 return False
         
         self.get_logger().info("All required plugins/methods are available")
@@ -311,6 +311,8 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         self.latest_hand_keypoints = None
         self.latest_scene_image = None
         self.latest_robot_state = None
+
+        self.set_state("disconnected")
         
         self.get_logger().info("MultiFeedbackDataProcessor emergency stopped successfully")
 

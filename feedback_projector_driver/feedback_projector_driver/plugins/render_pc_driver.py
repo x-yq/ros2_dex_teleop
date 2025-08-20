@@ -1,6 +1,5 @@
 from typing import Dict, List, Any, Optional, Union
 import json
-import yaml
 import rclpy
 from rclpy.subscription import Subscription
 import numpy as np
@@ -35,80 +34,105 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         self.projection_interval = 1.0  # seconds
         self.last_projection_time = self.get_clock().now()
         self._initialize_node()
+        self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for RenderPC specific setup"""
         self.get_logger().info(f"Initializing RenderPCDriver: {self.layer_cn_id}")
         
-        # Load specific configuration from YAML
-        config_data = self.get_config("feedback_projector_driver.yaml")
-        if config_data:
-            try:
-                config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-                if "plugins" in config and len(config["plugins"]) > 0:
-                    plugin_params = config["plugins"][0].get("params", {})
-                    self.width = plugin_params.get("width", self.width)
-                    self.height = plugin_params.get("height", self.height)
-                    self.get_logger().info(f"Loaded display config: {self.width}x{self.height}")
-            except Exception as e:
-                self.get_logger().error(f"Failed to parse plugin config: {str(e)}")
-        
         # Register publishers and subscribers
+        self._load_configs()
         self.register_pub_sub()
         
         # Start a timer for periodic dummy projection
         self.projection_timer = self.create_timer(0.1, self.periodic_projection)
         
-        self.lifecycle = "ready"
+        if self.check_plugins():
+            self.set_state("ready")
         self.get_logger().info("RenderPCDriver initialized successfully")
 
-    def register_pub_sub(self):
-        """Register subscribers based on data_stream.yaml configuration"""
+    def _load_configs(self):
+        """Load all required configurations using ComponentNode methods"""
         try:
-            # Get data stream configuration
-            config_data = self.get_config("data_stream.yaml")
-            if config_data:
-                data_config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
+            # Load component-specific configuration
+            self.my_config = self.load_my_config()
+            if not self.my_config:
+                self.get_logger().warn(f"No component config found for {self.layer_cn_id}")
+                self.my_config = {}
+            
+            # Load data stream configuration
+            self.data_stream_config = self.load_data_stream_config()
+            if not self.data_stream_config:
+                self.get_logger().error("Failed to load data stream configuration")
+                self.data_stream_config = {}
+            
+            # Load hardware configuration for projector settings
+            self.hardware_config = self.load_hardware_config()
+            if not self.hardware_config:
+                self.get_logger().warn("No hardware config found")
+                self.hardware_config = {}
+            
+            # Override display parameters from component config if available
+            if self.my_config and "plugins" in self.my_config:
+                plugins = self.my_config["plugins"]
+                if plugins and len(plugins) > 0:
+                    plugin_params = plugins[0].get("params", {})
+                    self.width = plugin_params.get("width", self.width)
+                    self.height = plugin_params.get("height", self.height)
+                    self.projection_interval = plugin_params.get("projection_interval", self.projection_interval)
+                    self.get_logger().info(f"Loaded display config: {self.width}x{self.height}, interval: {self.projection_interval}s")
+            
+            self.get_logger().info("All configurations loaded successfully")
+            
+        except Exception as e:
+            self.handle_error("Failed to load configurations", e)
+
+    def register_pub_sub(self):
+        """Register subscribers based on data_stream configuration"""
+        try:
+            # Use the loaded data_stream_config instead of manually parsing YAML
+            if not self.data_stream_config or "topics" not in self.data_stream_config:
+                self.handle_error("Data stream configuration not available or invalid")
+                return
                 
-                # Find topics where this node is a subscriber
-                if "topics" in data_config:
-                    for topic_config in data_config["topics"]:
-                        if self.layer_cn_id in topic_config.get("subscribers", []):
-                            topic_id = topic_config["id"]
-                            msg_type = topic_config["msg_type"]
-                            
-                            # Create subscription based on message type
-                            if msg_type == "component_interfaces/msg/SceneImage":
-                                self.create_subscription(
-                                    SceneImage,
-                                    topic_id,
-                                    self.scene_image_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to {topic_id}")
-                                
-                            elif msg_type == "component_interfaces/msg/RobotState":
-                                self.create_subscription(
-                                    RobotState,
-                                    topic_id,
-                                    self.robot_state_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to {topic_id}")
-                                
-                            elif msg_type == "component_interfaces/msg/Hand2DPlotData":
-                                self.create_subscription(
-                                    Hand2DPlotData,
-                                    topic_id,
-                                    self.hand_plot_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to {topic_id}")
+            # Find topics where this node is a subscriber
+            for topic_config in self.data_stream_config["topics"]:
+                if self.layer_cn_id in topic_config.get("subscribers", []):
+                    topic_id = topic_config["id"]
+                    msg_type = topic_config["msg_type"]
+                    
+                    # Create subscription based on message type
+                    if msg_type == "component_interfaces/msg/SceneImage":
+                        self.create_subscription(
+                            SceneImage,
+                            topic_id,
+                            self.scene_image_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to {topic_id}")
+                        
+                    elif msg_type == "component_interfaces/msg/RobotState":
+                        self.create_subscription(
+                            RobotState,
+                            topic_id,
+                            self.robot_state_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to {topic_id}")
+                        
+                    elif msg_type == "component_interfaces/msg/Hand2DPlotData":
+                        self.create_subscription(
+                            Hand2DPlotData,
+                            topic_id,
+                            self.hand_plot_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to {topic_id}")
             
             self.get_logger().info("All subscriptions registered successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Failed to register subscriptions: {str(e)}")
+            self.handle_error("Failed to register subscriptions", e)
 
     def scene_image_callback(self, msg: SceneImage):
         """Callback for processed scene image data"""
@@ -197,7 +221,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.get_logger().error(f"Required method '{method_name}' not implemented")
+                self.handle_error(f"Required method '{method_name}' not implemented")
                 return False
         
         self.get_logger().info("All required plugins/methods are available")
@@ -216,5 +240,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         self.latest_scene_image = None
         self.latest_robot_state = None
         self.latest_hand_plot_data = None
+
+        self.set_state("disconnected")
         
         self.get_logger().info("RenderPCDriver emergency stopped successfully")

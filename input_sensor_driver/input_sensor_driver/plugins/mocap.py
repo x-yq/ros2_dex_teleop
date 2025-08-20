@@ -26,37 +26,47 @@ class RococoDriver(SensorDriverBase):
         self.sensor_active = False
         self.rococo_connection_status = False
         
-        # Load plugin parameters
-        self._load_plugin_params()
+        self._initialize_node()
 
-        self.register_pub_sub()
-        
+        self._wait_for_start_cmd()
+
         # Start streaming timer
         self._start_streaming()
-        
-    def _load_plugin_params(self):
-        """Load plugin-specific parameters from configuration."""
-        try:
-            config_data = self.get_config(f"{self.layer_cn_id}.yaml")
-            if config_data:
-                if config_data.strip().startswith('{'):
-                    config = json.loads(config_data)
-                else:
-                    config = yaml.safe_load(config_data)
+
+    @Override
+    def _initialize_node(self):
+
+        # # Load plugin parameters
+        # self._load_plugin_params()
+
+        self.register_pub_sub()
+
+        if self.check_plugins():
+            self.set_state("ready")
+
+    # def _load_plugin_params(self):
+    #     """Load plugin-specific parameters from configuration."""
+    #     try:
+    #         config_data = self.get_config(f"{self.layer_cn_id}.yaml")
+    #         if config_data:
+    #             if config_data.strip().startswith('{'):
+    #                 config = json.loads(config_data)
+    #             else:
+    #                 config = yaml.safe_load(config_data)
                 
-                # Extract frequency from plugin params
-                plugins = config.get('plugins', [])
-                for plugin in plugins:
-                    if plugin.get('id') == 'rococo_driver':
-                        params = plugin.get('params', {})
-                        self.freq = params.get('freq', 60)
-                        break
+    #             # Extract frequency from plugin params
+    #             plugins = config.get('plugins', [])
+    #             for plugin in plugins:
+    #                 if plugin.get('id') == 'rococo_driver':
+    #                     params = plugin.get('params', {})
+    #                     self.freq = params.get('freq', 60)
+    #                     break
                         
-                self.logging(f"Loaded plugin params: freq={self.freq}Hz", "INFO")
-            else:
-                self.logging("Using default plugin parameters", "WARN")
-        except Exception as e:
-            self.logging(f"Error loading plugin params: {str(e)}", "ERROR")
+    #             self.logging(f"Loaded plugin params: freq={self.freq}Hz", "INFO")
+    #         else:
+    #             self.logging("Using default plugin parameters", "WARN")
+    #     except Exception as e:
+    #         self.handle_error("Error loading plugin params: ", e)
             
     def register_pub_sub(self):
         """Register publishers and subscribers based on data stream configuration."""
@@ -64,7 +74,7 @@ class RococoDriver(SensorDriverBase):
             # Get data stream configuration
             config_data = self.get_config("data_stream.yaml")
             if not config_data:
-                self.logging("Failed to load data stream configuration", "ERROR")
+                self.handle_error("Failed to load data stream configuration")
                 return
                 
             # Parse configuration
@@ -97,7 +107,7 @@ class RococoDriver(SensorDriverBase):
             self.logging(f"Registered {len(self.data_publishers)} publishers", "INFO")
             
         except Exception as e:
-            self.logging(f"Error in register_pub_sub: {str(e)}", "ERROR")
+            self.handle_error("Error in register_pub_sub", e)
 
     def start_sensor(self, sensor_id: str) -> bool:
         """Start the rococo glove sensor."""
@@ -118,11 +128,11 @@ class RococoDriver(SensorDriverBase):
                 self.logging(f"Rococo sensor {sensor_id} started successfully", "INFO")
                 return True
             else:
-                self.logging(f"No connection info found for sensor: {sensor_id}", "ERROR")
+                self.handle_error(f"No connection info found for sensor: {sensor_id}")
                 return False
                 
         except Exception as e:
-            self.logging(f"Error starting sensor {sensor_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error starting sensor {sensor_id}: ", e)
             return False
 
     def stop_sensor(self, sensor_id: str) -> bool:
@@ -137,7 +147,7 @@ class RococoDriver(SensorDriverBase):
             return True
             
         except Exception as e:
-            self.logging(f"Error stopping sensor {sensor_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error stopping sensor {sensor_id}: ", e)
             return False
 
     def get_data_from_sensor(self, sensor_id: str) -> Any:
@@ -182,7 +192,7 @@ class RococoDriver(SensorDriverBase):
             return hand_data
             
         except Exception as e:
-            self.logging(f"Error getting data from sensor {sensor_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error getting data from sensor {sensor_id}: ", e)
             return None
 
     def _create_raw_hand_keypoint_msg(self, hand_data: Dict[str, Any]) -> RawHandKeypoint:
@@ -223,7 +233,7 @@ class RococoDriver(SensorDriverBase):
                 self.logging("No data received from rococo sensor", "DEBUG")
                 
         except Exception as e:
-            self.logging(f"Error in stream: {str(e)}", "ERROR")
+            self.handle_error(f"Error in stream: ", e)
 
     def _start_streaming(self):
         """Start the streaming timer."""
@@ -245,7 +255,7 @@ class RococoDriver(SensorDriverBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name):
-                self.logging(f"Missing required method: {method_name}", "ERROR")
+                self.handle_error(f"Missing required method: {method_name}")
                 return False
                 
         self.logging("All required plugin methods implemented", "INFO")
@@ -262,6 +272,7 @@ class RococoDriver(SensorDriverBase):
             
         # Stop sensor
         self.stop_sensor('rococo')
+        self.set_state("disconnected")
         
         self.logging("Emergency stop completed", "WARN")
 

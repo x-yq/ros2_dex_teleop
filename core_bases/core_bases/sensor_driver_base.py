@@ -22,75 +22,79 @@ class SensorDriverBase(ComponentNode, ABC):
         # Attributes
         self.sensor_config: Dict[str, Dict[str, str]] = {}
         self.data_publishers: Dict[str, Publisher] = {}
+
+        self.my_config: Dict[str, Any] = {}
+        self.hardware_config: Dict[str, Any] = {}
+        self.data_stream_config: Dict[str, Any] = {}
         
     @overwritten
     def _initialize_node(self):
         """Initialize the driver node."""
         self.get_logger().info(f"Initializing FeedbackProjectorDriverBase: {self.layer_cn_id}")
         
-        # Load projector configurations
-        self._load_sensor_config()
+        # # Load projector configurations
+        # self._load_sensor_config()
         
         # Register publishers and subscribers
         self.register_pub_sub()
         
         # Verify plugins
         if self.check_plugins():
-            self.lifecycle = "ready"
+            self.set_state("ready")
             self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
         else:
             self.get_logger().warn(f"{self.layer_cn_id} unsuccessful")
         
         self.get_logger().info("SensorDriverBase initialized successfully")
 
-    def _load_sensor_config(self):
-        """Load sensor configuration from hardware config files."""
-        try:
-            config_data = self.get_config("hardware.yaml")
-            if config_data:
-                # Handle both YAML and JSON formats
-                if config_data.strip().startswith('{'):
-                    hardware_config = json.loads(config_data)
-                else:
-                    hardware_config = yaml.safe_load(config_data)
+    # def _load_sensor_config(self):
+    #     """Load sensor configuration from hardware config files."""
+    #     try:
+    #         config_data = self.get_config("hardware.yaml")
+    #         if config_data:
+    #             # Handle both YAML and JSON formats
+    #             if config_data.strip().startswith('{'):
+    #                 hardware_config = json.loads(config_data)
+    #             else:
+    #                 hardware_config = yaml.safe_load(config_data)
                 
-                # Convert list format to dictionary for easier access
-                hardware_list = hardware_config.get('hardware', [])
-                self.sensor_config = {}
+    #             # Convert list format to dictionary for easier access
+    #             hardware_list = hardware_config.get('hardware', [])
+    #             self.sensor_config = {}
                 
-                for hw_item in hardware_list:
-                    if isinstance(hw_item, dict) and 'hardware_id' in hw_item:
-                        hardware_id = hw_item['hardware_id']
-                        # Create sensor config entry with IP and access info
-                        sensor_info = {
-                            'ip': hw_item.get('ip', ''),
-                            'access_port': hw_item.get('access_port', 22),
-                            'description': f"Sensor on {hardware_id}",
-                            'execution_platform': hw_item.get('execution_plattform', False)
-                        }
+    #             for hw_item in hardware_list:
+    #                 if isinstance(hw_item, dict) and 'hardware_id' in hw_item:
+    #                     hardware_id = hw_item['hardware_id']
+    #                     # Create sensor config entry with IP and access info
+    #                     sensor_info = {
+    #                         'ip': hw_item.get('ip', ''),
+    #                         'access_port': hw_item.get('access_port', 22),
+    #                         'description': f"Sensor on {hardware_id}",
+    #                         'execution_platform': hw_item.get('execution_plattform', False)
+    #                     }
                         
-                        # Add SSH info if available
-                        if 'ssh' in hw_item:
-                            sensor_info.update(hw_item['ssh'])
+    #                     # Add SSH info if available
+    #                     if 'ssh' in hw_item:
+    #                         sensor_info.update(hw_item['ssh'])
                             
-                        self.sensor_config[hardware_id] = sensor_info
+    #                     self.sensor_config[hardware_id] = sensor_info
                 
-                self.logging(f"Loaded sensor config for hardware: {list(self.sensor_config.keys())}", "INFO")
-            else:
-                self.logging("Failed to load sensor configuration", "ERROR")
-        except Exception as e:
-            self.logging(f"Error loading sensor config: {str(e)}", "ERROR")
-            self.sensor_config = {}
+    #             self.logging(f"Loaded sensor config for hardware: {list(self.sensor_config.keys())}", "INFO")
+    #         else:
+    #             self.logging("Failed to load sensor configuration", "ERROR")
+    #     except Exception as e:
+    #         self.logging(f"Error loading sensor config: {str(e)}", "ERROR")
+    #         self.sensor_config = {}
     
-    def get_sensor_ip_port(self, sensor_id: str) -> Optional[tuple]:
-        """Get sensor IP and port by sensor ID."""
-        if sensor_id in self.sensor_config:
-            sensor_info = self.sensor_config[sensor_id]
-            ip = sensor_info.get('ip')
-            port = sensor_info.get('access_port')
-            if ip and port:
-                return (ip, port)
-        return None
+    # def get_sensor_ip_port(self, sensor_id: str) -> Optional[tuple]:
+    #     """Get sensor IP and port by sensor ID."""
+    #     if sensor_id in self.sensor_config:
+    #         sensor_info = self.sensor_config[sensor_id]
+    #         ip = sensor_info.get('ip')
+    #         port = sensor_info.get('access_port')
+    #         if ip and port:
+    #             return (ip, port)
+    #     return None
 
     @abstractmethod
     def start_sensor(self, sensor_id: str) -> bool:

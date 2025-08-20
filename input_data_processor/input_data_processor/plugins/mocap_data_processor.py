@@ -41,12 +41,13 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         
         # Initialize processing parameters
         self._initialize_node()
+        self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for Rococo specific setup"""
         self.get_logger().info(f"Initializing RococoHandKeypointProcessor: {self.layer_cn_id}")
 
-        self._load_processor_config()
+        # self._load_processor_config()
         
         # Register publishers and subscribers
         self.register_pub_sub()
@@ -54,21 +55,23 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         ## Start a timer for periodic dummy processing
         # self.dummy_processing_timer = self.create_timer(1.0/self.processing_frequency, self.dummy_processing_callback)
         
-        self.lifecycle = "ready"
+        if self.check_plugins():
+            self.set_state("ready")
+            
         self.get_logger().info("RococoHandKeypointProcessor initialized successfully")
 
-    def _load_processor_config(self):
-        """Load processor-specific configuration"""
-        try:
-            config_data = self.get_config("input_control_data_processor.yaml")
-            if config_data:
-                config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-                if "plugins" in config and len(config["plugins"]) > 0:
-                    plugin_params = config["plugins"][0].get("params", {})
-                    self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
-                    self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
-        except Exception as e:
-            self.get_logger().error(f"Failed to load processor config: {str(e)}")
+    # def _load_processor_config(self):
+    #     """Load processor-specific configuration"""
+    #     try:
+    #         config_data = self.get_config("input_control_data_processor.yaml")
+    #         if config_data:
+    #             config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
+    #             if "plugins" in config and len(config["plugins"]) > 0:
+    #                 plugin_params = config["plugins"][0].get("params", {})
+    #                 self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
+    #                 self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
+    #     except Exception as e:
+    #         self.handle_error(f"Failed to load processor config: ", e)
 
     def register_pub_sub(self):
         """Register publishers and subscribers based on data_stream.yaml configuration"""
@@ -111,7 +114,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             self.get_logger().info("All publishers and subscribers registered successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Failed to register publishers/subscribers: {str(e)}")
+            self.handle_error(f"Failed to register publishers/subscribers: ", e)
 
     def raw_data_callback(self, msg: RawHandKeypoint):
         """Callback for raw hand keypoint data"""
@@ -138,7 +141,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             self.get_logger().debug("Data processing completed successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Error processing data: {str(e)}")
+            self.handle_error("Error processing data:", e)
 
     def normalize_poses_wrt_middle_proximal(self, hand_positions, hand_orientations, is_left=True):
         """
@@ -275,7 +278,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             return processed_msg
                                     
         except Exception as e:
-            self.logging(f"Error processing right hand data: {e}", "ERROR")
+            self.handle_error("Error processing right hand data: ", e)
     
     def process_right_hand(self, raw_data: RawHandKeypoint):
         """Process right hand raw keypoints"""
@@ -311,7 +314,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             return processed_msg
                         
         except Exception as e:
-            self.logging(f"Error processing right hand data: {e}", "ERROR")
+            self.handle_error("Error processing right hand data: ", e)
 
 
     def check_plugins(self):
@@ -320,7 +323,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.get_logger().error(f"Required method '{method_name}' not implemented")
+                self.handle_error(f"Required method '{method_name}' not implemented")
                 return False
         
         self.get_logger().info("All required plugins/methods are available")
@@ -330,6 +333,8 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         """Emergency stop implementation"""
         self.get_logger().warn("URGENT STOP triggered for RococoHandKeypointProcessor")
         self.is_processing_active = False
+
+        self.set_state("disconnected")
         
         # Stop the dummy processing timer
         if hasattr(self, 'dummy_processing_timer'):

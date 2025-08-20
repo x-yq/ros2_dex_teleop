@@ -47,38 +47,43 @@ class XArm5Driver(RobotDriverBase):
         # Command tracking
         self.last_command_time = None
         self.command_timeout = 5.0  # seconds
-        
-        # Load plugin parameters
-        self._load_plugin_params()
 
-        self.register_pub_sub()
-        
+        self._initialize_node()
+        self._wait_for_start_cmd()
+
         # Start state publishing timer
         self._start_state_publishing()
+
+    @override
+    def _initialize_node(self):
+        # self._load_plugin_params()
+        self.register_pub_sub()
+        if self.check_plugins():
+            self.set_state("ready")
         
-    def _load_plugin_params(self):
-        """Load plugin-specific parameters from configuration."""
-        try:
-            config_data = self.get_config(f"{self.layer_cn_id}.yaml")
-            if config_data:
-                if config_data.strip().startswith('{'):
-                    config = json.loads(config_data)
-                else:
-                    config = yaml.safe_load(config_data)
+    # def _load_plugin_params(self):
+    #     """Load plugin-specific parameters from configuration."""
+    #     try:
+    #         config_data = self.get_config(f"{self.layer_cn_id}.yaml")
+    #         if config_data:
+    #             if config_data.strip().startswith('{'):
+    #                 config = json.loads(config_data)
+    #             else:
+    #                 config = yaml.safe_load(config_data)
                 
-                # Extract frequency from plugin params
-                plugins = config.get('plugins', [])
-                for plugin in plugins:
-                    if plugin.get('id') == 'xarm5_driver':
-                        params = plugin.get('params', {})
-                        self.freq = params.get('freq', 90)
-                        break
+    #             # Extract frequency from plugin params
+    #             plugins = config.get('plugins', [])
+    #             for plugin in plugins:
+    #                 if plugin.get('id') == 'xarm5_driver':
+    #                     params = plugin.get('params', {})
+    #                     self.freq = params.get('freq', 90)
+    #                     break
                         
-                self.logging(f"Loaded plugin params: freq={self.freq}Hz", "INFO")
-            else:
-                self.logging("Using default plugin parameters", "WARN")
-        except Exception as e:
-            self.logging(f"Error loading plugin params: {str(e)}", "ERROR")
+    #             self.logging(f"Loaded plugin params: freq={self.freq}Hz", "INFO")
+    #         else:
+    #             self.logging("Using default plugin parameters", "WARN")
+    #     except Exception as e:
+    #         self.handle_error(f"Error loading plugin params: {str(e)}")
             
     def register_pub_sub(self):
         """Register publishers and subscribers based on data stream configuration."""
@@ -86,7 +91,7 @@ class XArm5Driver(RobotDriverBase):
             # Get data stream configuration
             config_data = self.get_config("data_stream.yaml")
             if not config_data:
-                self.logging("Failed to load data stream configuration", "ERROR")
+                self.handle_error("Failed to load data stream configuration")
                 return
                 
             # Parse configuration
@@ -130,7 +135,7 @@ class XArm5Driver(RobotDriverBase):
             self.logging(f"Registered {len(self.state_publishers)} publishers and {len(self.cmd_subscribers)} subscribers", "INFO")
             
         except Exception as e:
-            self.logging(f"Error in register_pub_sub: {str(e)}", "ERROR")
+            self.handle_error(f"Error in register_pub_sub: {str(e)}")
 
     def cmd_sub_callback(self, msg: JointAngles, topic_id: str):
         """Callback for joint angle commands."""
@@ -144,7 +149,7 @@ class XArm5Driver(RobotDriverBase):
             
             # Validate joint count
             if len(msg.joint_angles) != len(self.joint_names):
-                self.logging(f"Invalid joint count: expected {len(self.joint_names)}, got {len(msg.joint_angles)}", "ERROR")
+                self.handle_error(f"Invalid joint count: expected {len(self.joint_names)}, got {len(msg.joint_angles)}")
                 return
             
             # Update target positions
@@ -161,7 +166,7 @@ class XArm5Driver(RobotDriverBase):
             self.logging(f"Updated target joint positions: {self.target_joint_positions}", "DEBUG")
             
         except Exception as e:
-            self.logging(f"Error in cmd_sub_callback: {str(e)}", "ERROR")
+            self.handle_error(f"Error in cmd_sub_callback: {str(e)}")
 
     def get_state(self, robot_id: str) -> Any:
         """Get current robot state."""
@@ -186,7 +191,7 @@ class XArm5Driver(RobotDriverBase):
             return robot_state
             
         except Exception as e:
-            self.logging(f"Error getting state for robot {robot_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error getting state for robot {robot_id}: {str(e)}")
             return None
 
     def _update_robot_simulation(self):
@@ -306,7 +311,7 @@ class XArm5Driver(RobotDriverBase):
                 self.logging("No robot state available", "DEBUG")
                 
         except Exception as e:
-            self.logging(f"Error publishing robot state: {str(e)}", "ERROR")
+            self.handle_error(f"Error publishing robot state: {str(e)}")
 
     def home(self):
         """Move robot to home position."""
@@ -322,7 +327,7 @@ class XArm5Driver(RobotDriverBase):
             self.logging("Robot homing initiated", "INFO")
             
         except Exception as e:
-            self.logging(f"Error in home: {str(e)}", "ERROR")
+            self.handle_error(f"Error in home: {str(e)}")
 
     def execute_command(self, robot_id: str, command: Any) -> None:
         """Execute robot command."""
@@ -339,7 +344,7 @@ class XArm5Driver(RobotDriverBase):
                     self.logging(f"Executing joint angles command: {positions}", "DEBUG")
                     # Target positions already set in callback
                 else:
-                    self.logging(f"Invalid joint angles command: wrong number of joints", "ERROR")
+                    self.handle_error(f"Invalid joint angles command: wrong number of joints")
                     
             elif command_type == 'stop':
                 self.logging("Executing stop command", "INFO")
@@ -353,7 +358,7 @@ class XArm5Driver(RobotDriverBase):
                 self.logging(f"Unknown command type: {command_type}", "WARN")
                 
         except Exception as e:
-            self.logging(f"Error executing command for robot {robot_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error executing command for robot {robot_id}: {str(e)}")
 
     def _start_state_publishing(self):
         """Start the state publishing timer."""
@@ -386,7 +391,7 @@ class XArm5Driver(RobotDriverBase):
                     # Here you would initialize the actual XArm SDK
                     self.robot_connected = True
                 else:
-                    self.logging("No robot configuration found", "ERROR")
+                    self.handle_error("No robot configuration found")
                     return
             
             # Set initial state
@@ -397,7 +402,7 @@ class XArm5Driver(RobotDriverBase):
             self.logging("XArm5 robot initialized successfully", "INFO")
             
         except Exception as e:
-            self.logging(f"Error initializing robot: {str(e)}", "ERROR")
+            self.handle_error(f"Error initializing robot: {str(e)}")
 
     def check_plugins(self) -> bool:
         """Verify that this driver implements required interfaces."""
@@ -405,7 +410,7 @@ class XArm5Driver(RobotDriverBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name):
-                self.logging(f"Missing required method: {method_name}", "ERROR")
+                self.handle_error(f"Missing required method: {method_name}")
                 return False
                 
         self.logging("All required plugin methods implemented", "INFO")
@@ -424,6 +429,8 @@ class XArm5Driver(RobotDriverBase):
         if self.robot_active:
             self.execute_command("xarm5_robot", {"type": "stop", "urgent": True})
             self.robot_active = False
+
+        self.set_state("disconnected")
             
         self.logging("Emergency stop completed", "WARN")
 

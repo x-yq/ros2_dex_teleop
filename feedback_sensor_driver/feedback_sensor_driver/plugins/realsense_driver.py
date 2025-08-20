@@ -45,46 +45,56 @@ class RealsenseDriver(SensorDriverBase):
         self.cv_bridge = CvBridge()
         
         # Load plugin parameters
-        self._load_plugin_params()
+        self._initialize_node()
+        self._wait_for_start_cmd()
         
         # Start streaming timer
         self._start_streaming()
         
-    def _load_plugin_params(self):
-        """Load plugin-specific parameters from configuration."""
-        try:
-            config_data = self.get_config(f"{self.layer_cn_id}.yaml")
-            if config_data:
-                if config_data.strip().startswith('{'):
-                    config = json.loads(config_data)
-                else:
-                    config = yaml.safe_load(config_data)
+
+    @Override
+    def _initialize_node(self):
+        # self._load_plugin_params()
+        self.register_pub_sub()
+
+        if self.check_plugins():
+            self.set_state("ready")
+
+    # def _load_plugin_params(self):
+    #     """Load plugin-specific parameters from configuration."""
+    #     try:
+    #         config_data = self.get_config(f"{self.layer_cn_id}.yaml")
+    #         if config_data:
+    #             if config_data.strip().startswith('{'):
+    #                 config = json.loads(config_data)
+    #             else:
+    #                 config = yaml.safe_load(config_data)
                 
-                # Extract parameters from plugin params
-                plugins = config.get('plugins', [])
-                for plugin in plugins:
-                    if plugin.get('id') == 'realsense_driver' or plugin.get('class_path', '').endswith('RealsenseDriver'):
-                        params = plugin.get('params', {})
-                        self.cam_ids = params.get('cam_ids', [0])
-                        self.width = params.get('width', 1280)
-                        self.height = params.get('height', 720)
-                        self.fps = params.get('fps', 30)
-                        self.fps_sim = params.get('fps_sim', 60)
-                        self.rotation_angle = params.get('rotation_angle', 0)
-                        self.processing_preset = params.get('processing_preset', 1)
+    #             # Extract parameters from plugin params
+    #             plugins = config.get('plugins', [])
+    #             for plugin in plugins:
+    #                 if plugin.get('id') == 'realsense_driver' or plugin.get('class_path', '').endswith('RealsenseDriver'):
+    #                     params = plugin.get('params', {})
+    #                     self.cam_ids = params.get('cam_ids', [0])
+    #                     self.width = params.get('width', 1280)
+    #                     self.height = params.get('height', 720)
+    #                     self.fps = params.get('fps', 30)
+    #                     self.fps_sim = params.get('fps_sim', 60)
+    #                     self.rotation_angle = params.get('rotation_angle', 0)
+    #                     self.processing_preset = params.get('processing_preset', 1)
                         
-                        # Load constants
-                        constants = params.get('constants', {})
-                        self.VISUAL_RESCALE_FACTOR = constants.get('VISUAL_RESCALE_FACTOR', 2)
-                        self.VIZ_PORT_OFFSET = constants.get('VIZ_PORT_OFFSET', 500)
-                        self.DEPTH_PORT_OFFSET = constants.get('DEPTH_PORT_OFFSET', 1000)
-                        break
+    #                     # Load constants
+    #                     constants = params.get('constants', {})
+    #                     self.VISUAL_RESCALE_FACTOR = constants.get('VISUAL_RESCALE_FACTOR', 2)
+    #                     self.VIZ_PORT_OFFSET = constants.get('VIZ_PORT_OFFSET', 500)
+    #                     self.DEPTH_PORT_OFFSET = constants.get('DEPTH_PORT_OFFSET', 1000)
+    #                     break
                         
-                self.logging(f"Loaded plugin params: cams={self.cam_ids}, res={self.width}x{self.height}, fps={self.fps}", "INFO")
-            else:
-                self.logging("Using default plugin parameters", "WARN")
-        except Exception as e:
-            self.logging(f"Error loading plugin params: {str(e)}", "ERROR")
+    #             self.logging(f"Loaded plugin params: cams={self.cam_ids}, res={self.width}x{self.height}, fps={self.fps}", "INFO")
+    #         else:
+    #             self.logging("Using default plugin parameters", "WARN")
+    #     except Exception as e:
+    #         self.handle_error(f"Error loading plugin params: ", e)
             
     def register_pub_sub(self):
         """Register publishers and subscribers based on data stream configuration."""
@@ -92,7 +102,7 @@ class RealsenseDriver(SensorDriverBase):
             # Get data stream configuration
             config_data = self.get_config("data_stream.yaml")
             if not config_data:
-                self.logging("Failed to load data stream configuration", "ERROR")
+                self.handle_error("Failed to load data stream configuration")
                 return
                 
             # Parse configuration
@@ -125,7 +135,7 @@ class RealsenseDriver(SensorDriverBase):
             self.logging(f"Registered {len(self.data_publishers)} publishers", "INFO")
             
         except Exception as e:
-            self.logging(f"Error in register_pub_sub: {str(e)}", "ERROR")
+            self.handle_error(f"Error in register_pub_sub: ", e)
 
     def start_sensor(self, sensor_id: str) -> bool:
         """Start the RealSense camera sensor."""
@@ -157,7 +167,7 @@ class RealsenseDriver(SensorDriverBase):
             return True
                 
         except Exception as e:
-            self.logging(f"Error starting sensor {sensor_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error starting sensor {sensor_id}: ", e)
             return False
 
     def stop_sensor(self, sensor_id: str) -> bool:
@@ -176,7 +186,7 @@ class RealsenseDriver(SensorDriverBase):
             return True
             
         except Exception as e:
-            self.logging(f"Error stopping sensor {sensor_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error stopping sensor {sensor_id}: ", e)
             return False
 
     def get_data_from_sensor(self, sensor_id: str) -> Any:
@@ -213,7 +223,7 @@ class RealsenseDriver(SensorDriverBase):
             return sensor_data if sensor_data else None
             
         except Exception as e:
-            self.logging(f"Error getting data from sensor {sensor_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error getting data from sensor {sensor_id} ", e)
             return None
 
     def _generate_dummy_rgb_image(self, cam_id: int, cam_config: Dict) -> np.ndarray:
@@ -274,7 +284,7 @@ class RealsenseDriver(SensorDriverBase):
             return img_msg
             
         except Exception as e:
-            self.logging(f"Error creating image message for cam {cam_id}: {str(e)}", "ERROR")
+            self.handle_error(f"Error creating image message for cam {cam_id}: ", e)
             return None
 
     def stream(self):
@@ -305,7 +315,7 @@ class RealsenseDriver(SensorDriverBase):
                 self.logging("No data received from RealSense cameras", "DEBUG")
                 
         except Exception as e:
-            self.logging(f"Error in stream: {str(e)}", "ERROR")
+            self.handle_error(f"Error in stream: ", e)
 
     def _start_streaming(self):
         """Start the streaming timer."""
@@ -327,7 +337,7 @@ class RealsenseDriver(SensorDriverBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name):
-                self.logging(f"Missing required method: {method_name}", "ERROR")
+                self.handle_error(f"Missing required method: {method_name}")
                 return False
                 
         self.logging("All required plugin methods implemented", "INFO")
@@ -344,6 +354,7 @@ class RealsenseDriver(SensorDriverBase):
             
         # Stop all cameras
         self.stop_sensor('realsense')
+        self.set_state("disconnected")
         
         self.logging("Emergency stop completed", "WARN")
 

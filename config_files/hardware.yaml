@@ -1,4 +1,4 @@
-hardware:
+execution_plattforms:
   - hardware_id: host_server
     execution_plattform: true # if this is a pc or server for driver or algorithm
     ip: 192.168.1.101
@@ -15,6 +15,7 @@ hardware:
       username: ubuntu
       password: passexample
 
+sensors:
   - hardware_id: realsense_0
     execution_plattform: false
     driver_layer_cn_id: sensor_driver_cam_0

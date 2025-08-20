@@ -33,33 +33,35 @@ class MotionRetargetOT(MotionRetargetBase):
         
         # Initialize retargeting parameters
         self._initialize_node()
+        self._wait_for_start_cmd()
 
-    def _load_retarget_config(self):
-        """Load retarget-specific configuration"""
-        try:
-            config_data = self.get_config("motion_retarget.yaml")
-            if config_data:
-                config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-                if "plugins" in config and len(config["plugins"]) > 0:
-                    plugin_params = config["plugins"][0].get("params", {})
-                    self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
-                    self.get_logger().info(f"Loaded retarget config: {self.processing_frequency}Hz")
-        except Exception as e:
-            self.get_logger().error(f"Failed to load retarget config: {str(e)}")
+    # def _load_retarget_config(self):
+    #     """Load retarget-specific configuration"""
+    #     try:
+    #         config_data = self.get_config("motion_retarget.yaml")
+    #         if config_data:
+    #             config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
+    #             if "plugins" in config and len(config["plugins"]) > 0:
+    #                 plugin_params = config["plugins"][0].get("params", {})
+    #                 self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
+    #                 self.get_logger().info(f"Loaded retarget config: {self.processing_frequency}Hz")
+    #     except Exception as e:
+    #         self.handle_error(f"Failed to load retarget config: {str(e)}")
 
     def _initialize_node(self):
         """Override the base initialization for MotionRetargetOT specific setup"""
         self.get_logger().info(f"Initializing MotionRetargetOT: {self.layer_cn_id}")
 
-        self._load_retarget_config()
+        # self._load_retarget_config()
         
         # Register publishers and subscribers
         self.register_pub_sub()
         
         # Start a timer for periodic dummy retargeting
         # self.dummy_retargeting_timer = self.create_timer(1.0/self.processing_frequency, self.dummy_retargeting_callback)
-        
-        self.lifecycle = "ready"
+        if self.check_plugins():
+            self.set_state("ready")
+            
         self.get_logger().info("MotionRetargetOT initialized successfully")
 
     def register_pub_sub(self):
@@ -103,7 +105,7 @@ class MotionRetargetOT(MotionRetargetBase):
             self.get_logger().info("All publishers and subscribers registered successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Failed to register publishers/subscribers: {str(e)}")
+            self.handle_error(f"Failed to register publishers/subscribers: {str(e)}")
 
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
@@ -131,7 +133,7 @@ class MotionRetargetOT(MotionRetargetBase):
             self.get_logger().debug("Hand data retargeting completed successfully")
             
         except Exception as e:
-            self.get_logger().error(f"Error retargeting hand data: {str(e)}")
+            self.handle_error(f"Error retargeting hand data: {str(e)}")
     
     def quaternion_to_euler(self, q) -> tuple:
         """Convert quaternion to roll, pitch, yaw"""
@@ -272,7 +274,7 @@ class MotionRetargetOT(MotionRetargetBase):
         
         for method_name in required_methods:
             if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.get_logger().error(f"Required method '{method_name}' not implemented")
+                self.handle_error(f"Required method '{method_name}' not implemented")
                 return False
         
         self.get_logger().info("All required plugins/methods are available")
@@ -297,6 +299,8 @@ class MotionRetargetOT(MotionRetargetBase):
         stop_msg.timeout = Duration(sec=0, nanosec=0)
         
         self.publish_cmd("joint_angles_cmd", stop_msg)
+
+        self.set_state("disconnected")
         
         self.get_logger().info("MotionRetargetOT emergency stopped successfully")
 

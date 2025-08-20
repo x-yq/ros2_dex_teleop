@@ -1,5 +1,0 @@
-# system_interfaces/srv/GetStatus.srv
----
-string lifecycle
-bool success
-string message

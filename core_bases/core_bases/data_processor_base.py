@@ -22,6 +22,9 @@ class DataProcessorBase(ComponentNode, ABC):
         self.raw_data_subscribers: Dict[str, Subscription] = {}
         self.processed_data_publishers: Dict[str, Publisher] = {}
         
+        self.my_config: Dict[str, Any] = {}
+        self.data_stream_config: Dict[str, Any] = {}
+        
 
     def publish_processed_data(self, topic_id: str, msg: Any):
         """

@@ -24,7 +24,9 @@ class FeedbackProjectorDriverBase(ComponentNode, ABC):
         
         # Core attributes
         self.feedback_subscribers: Dict[str, Subscription] = {}
-        self.projector_configs: Dict[str, Any] = {}
+        self.my_config: Dict[str, Any] = {}
+        self.hardware_config: Dict[str, Any] = {}
+        self.data_stream_config: Dict[str, Any] = {}
         
 
     @overwritten
@@ -32,43 +34,17 @@ class FeedbackProjectorDriverBase(ComponentNode, ABC):
         """Initialize the feedback projector driver node."""
         self.get_logger().info(f"Initializing FeedbackProjectorDriverBase: {self.layer_cn_id}")
         
-        # Load projector configurations
-        self._load_projector_configs()
-        
         # Register publishers and subscribers
         self.register_pub_sub()
         
         # Verify plugins
         if self.check_plugins():
-            self.lifecycle = "ready"
+            self.set_state("ready")
             self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
         else:
             self.get_logger().warn(f"{self.layer_cn_id} unsuccessful")
         
         self.get_logger().info("FeedbackProjectorDriverBase initialized successfully")
-
-    def _load_projector_configs(self):
-        """Load projector configurations from hardware.yaml."""
-        try:
-            # Get hardware configuration
-            config_data = self.get_config("hardware.yaml")
-            if config_data:
-                hardware_config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-                
-                # Extract projector-related hardware configurations
-                if isinstance(hardware_config, dict) and "hardware" in hardware_config:
-                    for hw_item in hardware_config["hardware"]:
-                        if isinstance(hw_item, dict) and "hardware_id" in hw_item:
-                            # Store all hardware configs that might be projectors
-                            # The actual filtering can be done in concrete implementations
-                            self.projector_configs[hw_item["hardware_id"]] = hw_item
-                            
-                self.get_logger().info(f"Loaded {len(self.projector_configs)} hardware configurations")
-                
-        except Exception as e:
-            self.get_logger().error(f"Failed to load projector configs: {str(e)}")
-            self.projector_configs = {}
-
 
     @abstractmethod
     def project_feedback(self, projector_id: str, data: Dict[str, Any]):

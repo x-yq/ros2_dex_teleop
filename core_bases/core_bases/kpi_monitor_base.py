@@ -33,7 +33,7 @@ class KPIMonitorBase(ComponentNode):
             "stop_monitor",
             self.stop_monitor_srv_callback
         )
-        self.lifecycle = "ready"
+        self._wait_for_start_cmd()
 
     # ------------------------------------------------------------------
     # Abstract methods for subclasses (plugins must implement)

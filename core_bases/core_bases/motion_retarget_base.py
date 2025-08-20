@@ -23,24 +23,12 @@ class MotionRetargetBase(ComponentNode, ABC):
         self.control_data_subscribers: Dict[str, Subscription] = {}
         self.cmd_publishers: Dict[str, Publisher] = {}
         
-        # Client for static transforms
-        self.get_static_transform_client = self.create_client(
-            GetStaticTransform, 
-            'frame_manager/get_static_transform'
-        )
-        
         # Transform data storage
         self.static_transforms_cache: Dict[tuple, Any] = {}
-                
-        # Wait for static transform service
-        self._wait_for_static_transform_service()
 
-    def _wait_for_static_transform_service(self):
-        """Wait for static transform service to be available."""
-        self.get_logger().info("Waiting for static transform service...")
-        while not self.get_static_transform_client.wait_for_service(timeout_sec=2.0):
-            self.get_logger().warn("Static transform service not available, retrying...")
-        self.get_logger().info("Static transform service available")
+        self.my_config: Dict[str, Any] = {}
+        self.calibration_config: Dict[str, Any] = {}
+        self.data_stream_config: Dict[str, Any] = {}
 
 
     def publish_cmd(self, topic_id: str, msg: Any):
@@ -60,46 +48,6 @@ class MotionRetargetBase(ComponentNode, ABC):
                 self.logging(f"Failed to publish command to {topic_id}: {str(e)}", "ERROR")
         else:
             self.logging(f"Publisher for topic {topic_id} not found", "ERROR")
-
-    def get_static_transform(self, src_frame: str, tgt_frame: str) -> Optional[Any]:
-        """
-        Get static transform from frame manager service.
-        
-        Args:
-            src_frame: Source frame ID
-            tgt_frame: Target frame ID
-            
-        Returns:
-            Transform if successful, None otherwise
-        """
-        # Check cache first
-        cache_key = (src_frame, tgt_frame)
-        if cache_key in self.static_transforms_cache:
-            return self.static_transforms_cache[cache_key]
-        
-        # Request from service
-        req = GetStaticTransform.Request()
-        req.src_frame_id = src_frame
-        req.tgt_frame_id = tgt_frame
-        
-        try:
-            future = self.get_static_transform_client.call_async(req)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-            
-            if future.result() and future.result().success:
-                transform = future.result().transform
-                # Cache the result
-                self.static_transforms_cache[cache_key] = transform
-                self.logging(f"Retrieved static transform: {src_frame} -> {tgt_frame}", "DEBUG")
-                return transform
-            else:
-                error_msg = future.result().message if future.result() else "Service call failed"
-                self.logging(f"Failed to get static transform {src_frame} -> {tgt_frame}: {error_msg}", "ERROR")
-                return None
-                
-        except Exception as e:
-            self.logging(f"Error requesting static transform: {str(e)}", "ERROR")
-            return None
 
     @abstractmethod
     def retarget_control_to_robot_space(self, control_data: Any, transforms: Dict[str, Any]) -> Any:
