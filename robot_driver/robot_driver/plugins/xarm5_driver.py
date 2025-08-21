@@ -31,6 +31,8 @@ class XArm5Driver(RobotDriverBase):
         self.timer: Optional[Timer] = None
         self.robot_active = False
         self.robot_connected = False
+
+        self.robot_ip = None
         
         # Robot state
         self.joint_names = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5"]
@@ -54,53 +56,62 @@ class XArm5Driver(RobotDriverBase):
         # Start state publishing timer
         self._start_state_publishing()
 
-    @override
     def _initialize_node(self):
-        # self._load_plugin_params()
+        self._load_config()
         self.register_pub_sub()
         if self.check_plugins():
             self.set_state("ready")
-        
-    # def _load_plugin_params(self):
-    #     """Load plugin-specific parameters from configuration."""
-    #     try:
-    #         config_data = self.get_config(f"{self.layer_cn_id}.yaml")
-    #         if config_data:
-    #             if config_data.strip().startswith('{'):
-    #                 config = json.loads(config_data)
-    #             else:
-    #                 config = yaml.safe_load(config_data)
-                
-    #             # Extract frequency from plugin params
-    #             plugins = config.get('plugins', [])
-    #             for plugin in plugins:
-    #                 if plugin.get('id') == 'xarm5_driver':
-    #                     params = plugin.get('params', {})
-    #                     self.freq = params.get('freq', 90)
-    #                     break
-                        
-    #             self.logging(f"Loaded plugin params: freq={self.freq}Hz", "INFO")
-    #         else:
-    #             self.logging("Using default plugin parameters", "WARN")
-    #     except Exception as e:
-    #         self.handle_error(f"Error loading plugin params: {str(e)}")
             
+    def _load_config(self):
+        """Load all required configurations using ComponentNode methods"""
+        try:
+            # Load component-specific configuration
+            self.my_config = self.load_my_config()
+            if self.my_config and "plugins" in self.my_config:
+                # Extract processing frequency from plugin parameters if available
+                plugins = self.my_config["plugins"]
+                for plugin in plugins:
+                    if plugin.get('id') == 'xarm5_driver' or plugin.get('_target_', '').endswith('XArm5Driver'):
+                        plugin_params = plugin.get('params', {})
+                        self.freq = plugin_params.get("freq", self.freq)
+                        if 'joint_names' in plugin_params:
+                            self.joint_names = plugin_params['joint_names']
+                        if 'joint_limits' in plugin_params:
+                            # Store joint limits for validation
+                            self.joint_limits = plugin_params['joint_limits']
+                        self.get_logger().info(f"Loaded processor config: {self.freq}Hz")
+                        break
+            
+            # Load hardware configuration
+            self.hardware_config = self.load_hardware_config()
+            if self.hardware_config:
+                self.get_logger().info("Loaded hardware config")
+                
+                # Extract robot configuration
+                if 'robots' in self.hardware_config:
+                    robot_configs = self.hardware_config['robots']
+                    for robot_config in robot_configs:
+                        if robot_config['hardware_id'] == 'xarm5_robot':
+                            self.robot_ip = robot_config['ip']
+                            self.get_logger().info(f"Loaded robot config: {self.robot_ip}")
+            
+            # Load data stream configuration
+            self.data_stream_config = self.load_data_stream_config()
+            if self.data_stream_config:
+                self.get_logger().info("Loaded data stream config")
+                
+        except Exception as e:
+            self.handle_error(f"Failed to load configurations: {str(e)}")
+
     def register_pub_sub(self):
         """Register publishers and subscribers based on data stream configuration."""
         try:
-            # Get data stream configuration
-            config_data = self.get_config("data_stream.yaml")
-            if not config_data:
-                self.handle_error("Failed to load data stream configuration")
+            # Use the loaded data_stream_config instead of loading again
+            if not self.data_stream_config or 'topics' not in self.data_stream_config:
+                self.handle_error("No data stream configuration available")
                 return
-                
-            # Parse configuration
-            if config_data.strip().startswith('{'):
-                stream_config = json.loads(config_data)
-            else:
-                stream_config = yaml.safe_load(config_data)
             
-            topics = stream_config.get('topics', [])
+            topics = self.data_stream_config.get('topics', [])
             
             # Register publishers and subscribers
             for topic in topics:
@@ -382,17 +393,6 @@ class XArm5Driver(RobotDriverBase):
             if self.simulated:
                 self.logging("Running in simulated mode", "INFO")
                 self.robot_connected = True
-            else:
-                # In real implementation, connect to physical robot
-                robot_info = self.robot_config.get('xarm5_robot')
-                if robot_info:
-                    ip = robot_info.get('ip')
-                    self.logging(f"Would connect to physical robot at {ip}", "INFO")
-                    # Here you would initialize the actual XArm SDK
-                    self.robot_connected = True
-                else:
-                    self.handle_error("No robot configuration found")
-                    return
             
             # Set initial state
             self.robot_active = True

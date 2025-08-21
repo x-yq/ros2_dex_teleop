@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'input_data_processor_node = input_data_processor.input_data_processor_node:main'
         ],
     },
 )

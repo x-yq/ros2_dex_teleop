@@ -5,6 +5,8 @@ import yaml
 import numpy as np
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
+import tf_transformations
+
 
 # Import message types based on the interface definitions
 from component_interfaces.msg import (
@@ -25,88 +27,143 @@ class MotionRetargetOT(MotionRetargetBase):
         self.retargeting_counter = 0
         
         # Robot-specific parameters
-        self.robot_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5", "joint6"]
+        self.robot_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint_eef"]
         self.robot_joint_limits = [
             (-3.14, 3.14), (-2.0, 2.0), (-3.14, 3.14), 
-            (-3.14, 3.14), (-3.14, 3.14), (-3.14, 3.14)
+            (-3.14, 3.14), (-3.14, 3.14)
         ]
         
         # Initialize retargeting parameters
         self._initialize_node()
         self._wait_for_start_cmd()
 
-    # def _load_retarget_config(self):
-    #     """Load retarget-specific configuration"""
-    #     try:
-    #         config_data = self.get_config("motion_retarget.yaml")
-    #         if config_data:
-    #             config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-    #             if "plugins" in config and len(config["plugins"]) > 0:
-    #                 plugin_params = config["plugins"][0].get("params", {})
-    #                 self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
-    #                 self.get_logger().info(f"Loaded retarget config: {self.processing_frequency}Hz")
-    #     except Exception as e:
-    #         self.handle_error(f"Failed to load retarget config: {str(e)}")
-
     def _initialize_node(self):
         """Override the base initialization for MotionRetargetOT specific setup"""
         self.get_logger().info(f"Initializing MotionRetargetOT: {self.layer_cn_id}")
 
-        # self._load_retarget_config()
+        self._load_config()
         
         # Register publishers and subscribers
         self.register_pub_sub()
         
-        # Start a timer for periodic dummy retargeting
-        # self.dummy_retargeting_timer = self.create_timer(1.0/self.processing_frequency, self.dummy_retargeting_callback)
         if self.check_plugins():
             self.set_state("ready")
             
         self.get_logger().info("MotionRetargetOT initialized successfully")
 
-    def register_pub_sub(self):
-        """Register publishers and subscribers based on data_stream.yaml configuration"""
+    def _load_config(self):
+        """Load all required configurations using ComponentNode methods"""
         try:
-            # Get data stream configuration
-            config_data = self.get_config("data_stream.yaml")
-            if config_data:
-                data_config = yaml.safe_load(config_data) if isinstance(config_data, str) else data_config
-                
-                # Find topics where this node is a subscriber
-                if "topics" in data_config:
-                    for topic_config in data_config["topics"]:
-                        topic_id = topic_config["id"]
-                        
-                        # Subscribe to topics where this node is a subscriber
-                        if self.layer_cn_id in topic_config.get("subscribers", []):
-                            msg_type = topic_config["msg_type"]
-                            
-                            if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
-                                self.control_data_subscribers[topic_id] = self.create_subscription(
-                                    ProcessedHandKeypoint,
-                                    topic_id,
-                                    self.hand_keypoint_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to hand keypoints: {topic_id}")
-                        
-                        # Create publishers for topics where this node is the publisher
-                        if topic_config.get("publisher") == self.layer_cn_id:
-                            msg_type = topic_config["msg_type"]
-                            
-                            if msg_type == "component_interfaces/msg/JointAngles":
-                                self.cmd_publishers[topic_id] = self.create_publisher(
-                                    JointAngles,
-                                    topic_id,
-                                    10
-                                )
-                                self.get_logger().info(f"Created publisher for joint angles: {topic_id}")
+            # Load component-specific configuration
+            self.my_config = self.load_my_config()
+            if self.my_config and "plugins" in self.my_config:
+                plugins = self.my_config["plugins"]
+                for plugin in plugins:
+                    if plugin.get('id') == 'motion_retarget_ot' or plugin.get('_target_', '').endswith('MotionRetargetOT'):
+                        plugin_params = plugin.get('params', {})
+                        self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
+                        self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
+                        break
             
+            # Load calibration configuration
+            self.calibration_config = self.load_calibration_config()
+            if self.calibration_config:
+                self.get_logger().info("Loaded calibration config")
+            
+            # Load data stream configuration
+            self.data_stream_config = self.load_data_stream_config()
+            if self.data_stream_config:
+                self.get_logger().info("Loaded data stream config")
+                
+                # Extract topic information from data stream config
+                if 'topics' in self.data_stream_config:
+                    self.get_logger().info(f"Found {len(self.data_stream_config['topics'])} topics in data stream config")
+            
+            # # Load hardware configuration (optional)
+            # hardware_config = self.load_hardware_config(['robots'])
+            # if hardware_config and 'robots' in hardware_config:
+            #     robot_config = hardware_config['robots'].get('xarm5_robot', {})
+            #     if 'joint_names' in robot_config:
+            #         self.robot_joint_names = robot_config['joint_names']
+            #     if 'joint_limits' in robot_config:
+            #         self.robot_joint_limits = robot_config['joint_limits']
+            #     self.get_logger().info(f"Loaded hardware config for robot: {self.robot_joint_names}")
+                
+        except Exception as e:
+            self.handle_error(f"Failed to load configurations: {str(e)}")
+
+    def register_pub_sub(self):
+        """Register publishers and subscribers based on data_stream configuration"""
+        try:
+            # Use the loaded data_stream_config instead of loading again
+            if not self.data_stream_config or 'topics' not in self.data_stream_config:
+                self.get_logger().warn("No data stream configuration available")
+                return
+            
+            # Find topics where this node is a subscriber
+            for topic_config in self.data_stream_config['topics']:
+                topic_id = topic_config["id"]
+                
+                # Subscribe to topics where this node is a subscriber
+                if self.layer_cn_id in topic_config.get("subscribers", []):
+                    msg_type = topic_config["msg_type"]
+                    
+                    if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
+                        self.control_data_subscribers[topic_id] = self.create_subscription(
+                            ProcessedHandKeypoint,
+                            topic_id,
+                            self.hand_keypoint_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to hand keypoints: {topic_id}")
+                
+                # Create publishers for topics where this node is the publisher
+                if topic_config.get("publisher") == self.layer_cn_id:
+                    msg_type = topic_config["msg_type"]
+                    
+                    if msg_type == "component_interfaces/msg/JointAngles":
+                        self.cmd_publishers[topic_id] = self.create_publisher(
+                            JointAngles,
+                            topic_id,
+                            10
+                        )
+                        self.get_logger().info(f"Created publisher for joint angles: {topic_id}")
+        
             self.get_logger().info("All publishers and subscribers registered successfully")
             
         except Exception as e:
             self.handle_error(f"Failed to register publishers/subscribers: {str(e)}")
 
+    # def publish_cmd(self, topic_id: str, msg: Any) -> bool:
+    #     """
+    #     Publish command message to the specified topic.
+        
+    #     Args:
+    #         topic_id: The ID of the topic to publish to
+    #         msg: The message to publish
+            
+    #     Returns:
+    #         bool: True if successful, False otherwise
+    #     """
+    #     try:
+    #         # Check if we have a publisher for this topic
+    #         if topic_id not in self.cmd_publishers:
+    #             self.get_logger().warn(f"No publisher found for topic: {topic_id}")
+    #             return False
+            
+    #         # Get the publisher
+    #         publisher = self.cmd_publishers[topic_id]
+            
+    #         # Publish the message
+    #         publisher.publish(msg)
+            
+    #         self.get_logger().debug(f"Published command to {topic_id}")
+    #         return True
+            
+    #     except Exception as e:
+    #         self.handle_error(f"Error publishing command to {topic_id}: {str(e)}")
+    #         return False
+            
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
         self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
@@ -135,17 +192,27 @@ class MotionRetargetOT(MotionRetargetBase):
         except Exception as e:
             self.handle_error(f"Error retargeting hand data: {str(e)}")
     
-    def quaternion_to_euler(self, q) -> tuple:
-        """Convert quaternion to roll, pitch, yaw"""
-        import tf_transformations
-        quat = [q.x, q.y, q.z, q.w]
-        return tf_transformations.euler_from_quaternion(quat)
+    def quaternion_to_euler(self, quat):
+        """Debug version to see what format is expected"""
+        self.get_logger().debug(f"quaternion_to_euler received: {quat}, type: {type(quat)}")
+        
+        try:
+            # Log the length if it's a sequence
+            if hasattr(quat, '__len__'):
+                self.get_logger().debug(f"Quaternion length: {len(quat)}")
+            
+            q = [quat.x, quat.y, quat.z, quat.w]
+            return tf_transformations.euler_from_quaternion(q)
+            
+        except Exception as e:
+            self.handle_error(f"quaternion_to_euler failed: {e}")
+            raise
 
     def retarget_control_to_robot_space(
         self, control_data: ProcessedHandKeypoint, transforms: Dict[str, Any]
     ) -> JointAngles:
         """
-        Transform hand control data to robot command space.
+        Simple dummy implementation that returns basic joint angles.
         """
         joint_angles_msg = JointAngles()
         joint_angles_msg.header = control_data.header
@@ -154,42 +221,23 @@ class MotionRetargetOT(MotionRetargetBase):
         joint_angles_msg.joint_names = self.robot_joint_names
         joint_angles_msg.timeout = Duration(sec=1, nanosec=0)
 
-        # === Extract wrist position + orientation ===
-        wrist_vec = control_data.wrist  # should be 7 elements [x, y, z, qx, qy, qz, qw]
-        wrist_pos = Point(x=wrist_vec[0], y=wrist_vec[1], z=wrist_vec[2])
+        # Simple dummy joint angles (in radians)
+        # Adjust the number based on your robot_joint_names length
+        if len(self.robot_joint_names) == 5:
+            # For 5-DOF arm
+            joint_angles_msg.joint_angles = [0.1, -0.2, 0.3, 0.0, 0.1]
+        elif len(self.robot_joint_names) == 6:
+            # For 6-DOF arm  
+            joint_angles_msg.joint_angles = [0.1, -0.2, 0.3, 0.0, 0.1, -0.05]
+        else:
+            # Generic: create zeros for however many joints
+            joint_angles_msg.joint_angles = [0.0] * len(self.robot_joint_names)
+        
+        # Set joint velocities (same length as joint_angles)
+        joint_angles_msg.joint_velocities = [0.5] * len(joint_angles_msg.joint_angles)
 
-        class Q: pass
-        wrist_quat = Q()
-        wrist_quat.x, wrist_quat.y, wrist_quat.z, wrist_quat.w = wrist_vec[3:7]
-
-        # === Transform wrist position into robot base frame ===
-        wrist_robot = self._apply_transform(wrist_pos, transforms["hand_to_robot"])
-
-        # === Map wrist position to proximal joints ===
-        base_angle = np.arctan2(wrist_robot.y, wrist_robot.x)
-        shoulder_angle = np.interp(wrist_robot.z, [0.0, 0.5], [-1.0, 1.0])
-        elbow_angle = np.interp(wrist_robot.x, [0.2, 0.6], [-1.0, 1.0])
-
-        # === Map wrist quaternion to wrist joints ===
-        roll, pitch, yaw = self.quaternion_to_euler(wrist_quat)
-
-        wrist_roll = self._apply_joint_limit(roll, 3)
-        wrist_pitch = self._apply_joint_limit(pitch, 4)
-        wrist_yaw = self._apply_joint_limit(yaw, 5)
-
-        # === Build final joint command ===
-        joint_angles = [
-            self._apply_joint_limit(base_angle, 0),
-            self._apply_joint_limit(shoulder_angle, 1),
-            self._apply_joint_limit(elbow_angle, 2),
-            wrist_roll,
-            wrist_pitch,
-            wrist_yaw,
-        ]
-
-        joint_angles_msg.joint_angles = joint_angles
-        joint_angles_msg.joint_velocities = [0.5] * len(joint_angles)
-
+        self.logging(f"Sent dummy joint angles: {joint_angles_msg.joint_angles}", "INFO")
+        
         return joint_angles_msg
 
     def _apply_joint_limit(self, angle: float, joint_index: int) -> float:
@@ -252,7 +300,6 @@ class MotionRetargetOT(MotionRetargetBase):
     
     def _apply_transform(self, point: Point, transform: Transform) -> Point:
         """Apply a transform to a 3D point"""
-        import tf_transformations
         t = np.array([point.x, point.y, point.z, 1.0])
         trans = np.array([transform.translation.x,
                         transform.translation.y,

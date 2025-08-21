@@ -1,4 +1,0 @@
-std_msgs/Header header
-string sensor_id
-sensor_msgs/Image image
-geometry_msgs/Transform sensor_pose

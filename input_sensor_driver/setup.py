@@ -20,6 +20,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'input_sensor_driver_node = input_sensor_driver.input_sensor_driver_node:main',
+
         ],
     },
 )

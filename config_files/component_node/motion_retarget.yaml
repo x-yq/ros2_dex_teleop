@@ -11,11 +11,11 @@ meta:
   ros2_domain_id: None # optional
   
 # fallback plugin
-default_plugin: rococo_driver
+default_plugin: motion_retarget_ot
 
 plugins:
-  - id: rococo_driver
+  - id: motion_retarget_ot
     _target_: motion_retarget.motion_retarget.plugins.motion_retarget_ot.MotionRetargetOT
     priority: 1
     params: # for node with plugin initialization
-      freq: 90
+      freq: 1

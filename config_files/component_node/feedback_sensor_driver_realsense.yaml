@@ -13,15 +13,15 @@ meta:
 default_plugin: realsense_driver
 
 plugins:
-  - id: 
+  - id: realsense_driver
     _target_: feedback_sensor_driver.feedback_sensor_driver.plugins.realsense_driver.RealsenseDriver
     priority: 1
     params: # for node with plugin initialization
       cam_ids: [0]
       width: 1280
       height: 720
-      fps: 30
-      fps_sim: 60
+      fps: 1
+      fps_sim: 1
       rotation_angle: 0
       processing_preset: 1
       constants:

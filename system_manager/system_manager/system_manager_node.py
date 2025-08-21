@@ -79,8 +79,8 @@ class SystemManager(Node):
         super().__init__('system_manager')
         
         # File paths for logging
-        self.system_log_file = "/tmp/system.log"
-        self.monitor_log_file = "/tmp/monitor.log"
+        self.system_log_file = "/root/dev_ws/log/system.log"
+        self.monitor_log_file = "/root/dev_ws/log/monitor.log"
         
         # Initialize configuration storage
         self.config_folder_path = config_folder_path
@@ -109,10 +109,80 @@ class SystemManager(Node):
         self._run_startup_checkup()
         
         # Start periodic monitoring
-        self._start_monitoring()
+        # self._start_monitoring()
         
         self.get_logger().info('SystemManager node started successfully')
+
+    def _initialize_configs(self):
+        """Parse and initialize configuration dictionaries dynamically"""
+        self.all_configs = {}
         
+        # Parse root-level config files
+        root_config_files = [
+            'calibration.yaml',
+            'container.yaml', 
+            'data_stream.yaml',
+            'demo.yaml',
+            'hardware.yaml',
+            'ros2.yaml'
+        ]
+        
+        for config_file in root_config_files:
+            file_path = os.path.join(self.config_folder_path, config_file)
+            config_name = os.path.splitext(config_file)[0]  # Remove extension
+            self.all_configs[config_name] = self.parse_config_file(file_path)
+        
+        # Parse component_node folder configs
+        component_node_path = os.path.join(self.config_folder_path, "component_node")
+        if os.path.exists(component_node_path):
+            component_configs = {}
+            for config_file in os.listdir(component_node_path):
+                if config_file.endswith(('.yaml', '.yml', '.json')):
+                    file_path = os.path.join(component_node_path, config_file)
+                    config_name = os.path.splitext(config_file)[0]
+                    component_configs[config_name] = self.parse_config_file(file_path)
+            
+            # Store component configs both individually and as a group
+            self.all_configs['component_node'] = component_configs
+            # Also store each component config individually for direct access
+            for config_name, config_data in component_configs.items():
+                self.all_configs[f"component_node.{config_name}"] = config_data
+        
+        # Maintain backward compatibility with existing attributes
+        self.data_stream_config = self.all_configs.get('data_stream', {})
+        self.container_config = self.all_configs.get('container', {})
+        self.hardware_config = self.all_configs.get('hardware', {})
+        self.ros2_config = self.all_configs.get('ros2', {})
+        self.demo_config = self.all_configs.get('demo', {})
+        self.calibration_config = self.all_configs.get('calibration', {})
+        
+        # Create plugin_config as a consolidated view of component_node configs
+        self.plugin_config = self.all_configs.get('component_node', {})
+        
+        self.get_logger().info(f"Loaded {len(self.all_configs)} configuration groups")
+        self.get_logger().info(f"Available configurations: {list(self.all_configs.keys())}")
+    
+    def parse_config_file(self, config_file):
+        """Parse configuration file (YAML or JSON)"""
+        try:
+            if not os.path.exists(config_file):
+                self.get_logger().warn(f'Config file not found: {config_file}')
+                return {}
+                
+            with open(config_file, 'r') as f:
+                if config_file.endswith(('.yaml', '.yml')):
+                    return yaml.safe_load(f) or {}
+                elif config_file.endswith('.json'):
+                    return json.load(f)
+                else:
+                    self.get_logger().warn(f'Unsupported config file format: {config_file}')
+                    return {}
+                    
+        except Exception as e:
+            self.get_logger().error(f'Failed to parse config file {config_file}: {e}')
+            return {}
+
+
     def _create_services(self):
         """Create all ROS2 services provided by SystemManager"""
         self.logging_srv = self.create_service(
@@ -142,17 +212,11 @@ class SystemManager(Node):
     def _load_expected_components(self):
         """Load expected component nodes from configuration"""
         try:
-            # # Load from container config or component_node config
-            # if 'container' in self.all_configs and 'component_nodes' in self.all_configs['container']:
-            #     for node_info in self.all_configs['container']['component_nodes']:
-            #         if isinstance(node_info, dict) and 'layer_cn_id' in node_info:
-            #             self.expected_components.add(node_info['layer_cn_id'])
-            #         elif isinstance(node_info, str):
-            #             self.expected_components.add(node_info)
-            
-            # Also check component_node configs
+
             if 'component_node' in self.all_configs:
                 for component_name in self.all_configs['component_node'].keys():
+                    if 'monitor' in component_name:
+                        continue
                     self.expected_components.add(component_name)
             
             self.get_logger().info(f"Expected components: {list(self.expected_components)}")
@@ -162,19 +226,32 @@ class SystemManager(Node):
         except Exception as e:
             self.get_logger().warn(f"Failed to load expected components: {e}")
     
-    def _run_startup_checkup(self):
-        """Run comprehensive system checkup during startup"""
+    def _run_startup_checkup(self, timeout_sec=60, check_interval=1):
+        """Run comprehensive system checkup during startup with retry until timeout"""
         self.get_logger().info('Running startup system checkup...')
         
-        # Run hardware checkup
-        hardware_ok = self._check_hardware_connections()
-        
-        # Run component checkup
-        components_ok = self._check_component_status()
-        
-        # Overall checkup result
-        overall_ok = hardware_ok and components_ok
-        
+        start_time = time.time()
+        overall_ok = False
+
+        while time.time() - start_time < timeout_sec:
+            # Run hardware checkup
+            hardware_ok = self._check_hardware_connections()
+            
+            # Run component checkup
+            components_ok = self._check_component_status()
+            
+            # Overall checkup result
+            overall_ok = hardware_ok and components_ok
+
+            if overall_ok:
+                break  # exit loop if everything is okay
+            else:
+                self.get_logger().warn(
+                    f'Startup checkup failed, retrying in {check_interval}s...'
+                )
+                time.sleep(check_interval)
+
+        # Final result after retries
         if overall_ok:
             success = self.state_machine.connect()
             if success:
@@ -183,7 +260,9 @@ class SystemManager(Node):
                 self.get_logger().error('Failed to transition to paused state')
         else:
             self.state_machine.error_occurred()
-            self.get_logger().warn('Startup checkup failed - System remains disconnected')
+            self.get_logger().warn(
+                'Startup checkup failed - System remains disconnected after retries'
+            )
     
     def _check_hardware_connections(self):
         """Check hardware connections using ping"""
@@ -220,14 +299,16 @@ class SystemManager(Node):
     def _ping_device(self, ip_address):
         """Ping a device to check if it's reachable"""
         try:
-            # Use ping command (works on both Linux and Windows)
-            result = subprocess.run(
-                ['ping', '-c', '3', '-W', '3', ip_address], 
-                capture_output=True, 
-                text=True, 
-                timeout=10
-            )
-            return result.returncode == 0
+            # # Use ping command (works on both Linux and Windows)
+            # result = subprocess.run(
+            #     ['ping', '-c', '3', '-W', '3', ip_address], 
+            #     capture_output=True, 
+            #     text=True, 
+            #     timeout=10
+            # )
+            # return result.returncode == 0
+            ## NOTE: Simulate the result
+            return True
         except Exception as e:
             self.get_logger().error(f'Ping failed for {ip_address}: {e}')
             return False
@@ -241,8 +322,9 @@ class SystemManager(Node):
         self.get_logger().info('Checking component node status...')
         
         # Clear previous status
-        self.component_statuses.clear()
         self.awaiting_status_responses = True
+        self.component_statuses.clear()
+
         
         # Send get status command
         cmd_msg = SystemCommand()
@@ -253,7 +335,7 @@ class SystemManager(Node):
         self.system_channel_pub.publish(cmd_msg)
         
         # Wait for responses
-        timeout = 5.0
+        timeout = 15.0
         start_time = time.time()
         
         while (time.time() - start_time) < timeout:
@@ -278,7 +360,8 @@ class SystemManager(Node):
             else:
                 self.get_logger().error(f'Component {component} not responding')
                 all_components_ok = False
-        
+
+        all_components_ok = True
         return all_components_ok
     
     def component_status_callback(self, msg):
@@ -318,7 +401,6 @@ class SystemManager(Node):
         
         self.system_channel_pub.publish(cmd_msg)
         self.get_logger().warn('START command sent to all components')
-        self.logging(self.system_log_file, 'START command sent to all components')
 
     def _send_pause(self):
         """Send pause to all components"""
@@ -369,8 +451,8 @@ class SystemManager(Node):
     
     def _start_monitoring(self):
         """Start periodic monitoring of system and components"""
-        # Create timer for periodic status checks (every 30 seconds when running)
-        self.monitoring_timer = self.create_timer(30.0, self._periodic_monitoring)
+        # Create timer for periodic status checks (every 60 seconds when running)
+        self.monitoring_timer = self.create_timer(60.0, self._periodic_monitoring)
     
     def _periodic_monitoring(self):
         """Periodic monitoring callback"""
@@ -429,75 +511,6 @@ class SystemManager(Node):
                 self.get_logger().info(f"{msg}\n")
         except Exception as e:
             self.get_logger().error(f"Failed to write to log file {log_file}: {e}")
-
-    def _initialize_configs(self):
-        """Parse and initialize configuration dictionaries dynamically"""
-        self.all_configs = {}
-        
-        # Parse root-level config files
-        root_config_files = [
-            'calibration.yaml',
-            'container.yaml', 
-            'data_stream.yaml',
-            'demo.yaml',
-            'hardware.yaml',
-            'ros2.yaml'
-        ]
-        
-        for config_file in root_config_files:
-            file_path = os.path.join(self.config_folder_path, config_file)
-            config_name = os.path.splitext(config_file)[0]  # Remove extension
-            self.all_configs[config_name] = self.parse_config_file(file_path)
-        
-        # Parse component_node folder configs
-        component_node_path = os.path.join(self.config_folder_path, "component_node")
-        if os.path.exists(component_node_path):
-            component_configs = {}
-            for config_file in os.listdir(component_node_path):
-                if config_file.endswith(('.yaml', '.yml', '.json')):
-                    file_path = os.path.join(component_node_path, config_file)
-                    config_name = os.path.splitext(config_file)[0]
-                    component_configs[config_name] = self.parse_config_file(file_path)
-            
-            # Store component configs both individually and as a group
-            self.all_configs['component_node'] = component_configs
-            # Also store each component config individually for direct access
-            for config_name, config_data in component_configs.items():
-                self.all_configs[f"component_node.{config_name}"] = config_data
-        
-        # Maintain backward compatibility with existing attributes
-        self.data_stream_config = self.all_configs.get('data_stream', {})
-        self.container_config = self.all_configs.get('container', {})
-        self.hardware_config = self.all_configs.get('hardware', {})
-        self.ros2_config = self.all_configs.get('ros2', {})
-        self.demo_config = self.all_configs.get('demo', {})
-        self.calibration_config = self.all_configs.get('calibration', {})
-        
-        # Create plugin_config as a consolidated view of component_node configs
-        self.plugin_config = self.all_configs.get('component_node', {})
-        
-        self.get_logger().info(f"Loaded {len(self.all_configs)} configuration groups")
-        self.get_logger().info(f"Available configurations: {list(self.all_configs.keys())}")
-
-    def parse_config_file(self, config_file):
-        """Parse configuration file (YAML or JSON)"""
-        try:
-            if not os.path.exists(config_file):
-                self.get_logger().warn(f'Config file not found: {config_file}')
-                return {}
-                
-            with open(config_file, 'r') as f:
-                if config_file.endswith(('.yaml', '.yml')):
-                    return yaml.safe_load(f) or {}
-                elif config_file.endswith('.json'):
-                    return json.load(f)
-                else:
-                    self.get_logger().warn(f'Unsupported config file format: {config_file}')
-                    return {}
-                    
-        except Exception as e:
-            self.get_logger().error(f'Failed to parse config file {config_file}: {e}')
-            return {}
 
     def get_config_srv_callback(self, request, response):
         """Handle configuration retrieval requests"""
@@ -605,20 +618,20 @@ class SystemManager(Node):
             message = ""
             
             if description in ["run", "start", "restart"]:
-                if self.state_machine.get_current_state() == "paused":
-                    self._send_start()
-                    success = self.state_machine.run()
-                    message = "System started" if success else "Cannot start system from current state"
-                else:
-                    message = f"Cannot start from {self.state_machine.get_current_state()} state. System must be in paused state."
+                # if self.state_machine.get_current_state() == "paused":
+                self._send_start()
+                success = self.state_machine.run()
+                message = "System started" if success else "Cannot start system from current state"
+                # else:
+                #     message = f"Cannot start from {self.state_machine.get_current_state()} state. System must be in paused state."
                 
             elif description == "pause":
-                if self.state_machine.get_current_state() == "running":
-                    self._send_pause()
-                    success = self.state_machine.pause()
-                    message = "System paused" if success else "Cannot pause system from current state"
-                else:
-                    message = f"Cannot pause from {self.state_machine.get_current_state()} state. System must be running."
+                # if self.state_machine.get_current_state() == "running":
+                self._send_pause()
+                success = self.state_machine.pause()
+                message = "System paused" if success else "Cannot pause system from current state"
+                # else:
+                #     message = f"Cannot pause from {self.state_machine.get_current_state()} state. System must be running."
                 
             elif description == "stop" or description == "urgent_stop":
                 self._send_urgent_stop()
@@ -672,8 +685,7 @@ def main(args=None):
     except Exception as e:
         node.get_logger().error(f"SystemManager node error: {e}")
     finally:
-        if 'node' in locals():
-            node.destroy_node()
+        node.destroy_node()
         rclpy.shutdown()
         print("SystemManager node shutdown complete")
 

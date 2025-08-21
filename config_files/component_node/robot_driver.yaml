@@ -2,6 +2,7 @@
 
 layer_cn_id: robot_driver
 pkg_name: robot_driver
+simulated: True
 
 meta:
   description: "Robot driver"
@@ -18,4 +19,5 @@ plugins:
     _target_: robot_driver.robot_driver.plugins.xarm5_driver.XArm5Driver
     priority: 1
     params: # for node with plugin initialization
-      freq: 90
+      freq: 1
+      joint_names: ["joint_1", "joint_2", "joint_3", "joint_4", "joint_eef"]

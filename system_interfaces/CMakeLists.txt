@@ -11,7 +11,12 @@ find_package(builtin_interfaces REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
+# Generate both messages and services
 rosidl_generate_interfaces(${PROJECT_NAME}
+  # Messages
+  "msg/ComponentStatus.msg"
+  "msg/SystemCommand.msg"
+  # Services
   "srv/Logging.srv"
   "srv/GetConfig.srv"
   "srv/SystemControl.srv"
@@ -19,7 +24,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/StopDataCollection.srv"
   "srv/StartMonitor.srv"
   "srv/StopMonitor.srv"
-  "srv/GetStatus.srv"
   DEPENDENCIES builtin_interfaces std_msgs
 )
 

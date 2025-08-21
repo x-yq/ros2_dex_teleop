@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'feedback_projector_driver_node = feedback_projector_driver.feedback_projector_driver_node:main',
         ],
     },
 )

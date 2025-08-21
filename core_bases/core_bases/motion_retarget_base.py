@@ -7,7 +7,6 @@ from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
 
 from .component_node import ComponentNode
-from component_interfaces.srv import GetStaticTransform
 
 
 class MotionRetargetBase(ComponentNode, ABC):

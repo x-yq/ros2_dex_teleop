@@ -11,11 +11,11 @@ meta:
   ros2_domain_id: None # optional
   
 # fallback plugin
-default_plugin: realsense_driver
+default_plugin: render_pc_driver
 
 plugins:
-  - id: 
-    _target_: feedback_projector_driver.feedback_projector_driver.plugins.render_pc_driver.RenderPCDriver
+  - id: render_pc_driver 
+    _target_: render_pc_driver.RenderPCDriver
     priority: 1
     params: # for node with plugin initialization
       width: 1280

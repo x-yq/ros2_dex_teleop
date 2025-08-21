@@ -3,9 +3,10 @@ import hydra
 from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
+from .plugins.mocap import RococoDriver
 
 
-@hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node/input_sensor_driver_rococo.yaml", config_name="input_sensor_driver_rococo")
+@hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="input_sensor_driver_rococo")
 def main(cfg: DictConfig):
     """
     Main entrypoint for Node.
@@ -23,8 +24,7 @@ def main(cfg: DictConfig):
         plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
 
         # Instantiate the driver using Hydra
-        input_sensor_driver = instantiate(
-            plugin_cfg,
+        input_sensor_driver = RococoDriver(
             layer_cn_id=cfg.layer_cn_id,
             ros2_domain_id=cfg.get("ros2_domain_id", None),
         )
@@ -43,11 +43,6 @@ def main(cfg: DictConfig):
         else:
             print(f"Error creating node: {e}")
     finally:
-        if 'input_sensor_driver' in locals():
-            input_sensor_driver.urgent_stop()
-            input_sensor_driver.destroy_node()
+        # input_sensor_driver.urgent_stop()
+        input_sensor_driver.destroy_node()
         rclpy.shutdown()
-
-
-if __name__ == "__main__":
-    main()

@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'motion_retarget_node = motion_retarget.motion_retarget_node:main'
         ],
     },
 )

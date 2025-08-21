@@ -3,6 +3,7 @@ import hydra
 from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
+from .plugins.mocap_data_processor import RococoHandKeypointProcessor
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="input_control_data_processor")
 def main(cfg: DictConfig):
@@ -18,8 +19,7 @@ def main(cfg: DictConfig):
         plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
 
         # Instantiate the driver using Hydra
-        input_data_processor = instantiate(
-            plugin_cfg,
+        input_data_processor = RococoHandKeypointProcessor(
             layer_cn_id=cfg.layer_cn_id,
             ros2_domain_id=cfg.get("ros2_domain_id", None),
         )
@@ -38,9 +38,8 @@ def main(cfg: DictConfig):
         else:
             print(f"Error creating node: {e}")
     finally:
-        if 'input_data_processor' in locals():
-            input_data_processor.urgent_stop()
-            input_data_processor.destroy_node()
+        input_data_processor.urgent_stop()
+        input_data_processor.destroy_node()
         rclpy.shutdown()
 
 

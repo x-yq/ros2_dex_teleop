@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 package_name = 'feedback_data_processor'
 
 setup(
-    name=package_name,
+    name='feedback-data-processor',
     version='0.0.0',
     packages=find_packages(exclude=['test']),
     data_files=[
@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'feedback_data_processor_node = feedback_data_processor.feedback_data_processor_node:main',
         ],
     },
 )

@@ -27,7 +27,6 @@ class SensorDriverBase(ComponentNode, ABC):
         self.hardware_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
         
-    @overwritten
     def _initialize_node(self):
         """Initialize the driver node."""
         self.get_logger().info(f"Initializing FeedbackProjectorDriverBase: {self.layer_cn_id}")

@@ -29,7 +29,6 @@ class FeedbackProjectorDriverBase(ComponentNode, ABC):
         self.data_stream_config: Dict[str, Any] = {}
         
 
-    @overwritten
     def _initialize_node(self):
         """Initialize the feedback projector driver node."""
         self.get_logger().info(f"Initializing FeedbackProjectorDriverBase: {self.layer_cn_id}")

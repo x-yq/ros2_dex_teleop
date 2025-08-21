@@ -1,9 +1,10 @@
-# kpi_monitor/kpi_monitor/monitor_interface_node.py
+# kpi_monitor/kpi_monitor/kpi_monitor_node.py
 
 import hydra
 from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
+from .plugins.docker_monitor import DockerMonitor
 
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="monitor_0")
@@ -19,19 +20,25 @@ def main(cfg: DictConfig):
 
     rclpy.init()
 
-    # Pick default plugin from cfg.plugins
-    plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
+    try:
 
-    # NOTE: KPIMonitorBase constructor signature changed:
-    #   (layer_cn_id: str, ros2_domain_id: Optional[int] = None)
-    monitor = instantiate(
-        plugin_cfg,
-        layer_cn_id=cfg.layer_cn_id,
-        ros2_domain_id=cfg.get("ros2_domain_id", None),
-    )
+        # Pick default plugin from cfg.plugins
+        plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
 
-    rclpy.spin(monitor)
-    rclpy.shutdown()
+        # NOTE: KPIMonitorBase constructor signature changed:
+        #   (layer_cn_id: str, ros2_domain_id: Optional[int] = None)
+        monitor = DockerMonitor(
+            layer_cn_id=cfg.layer_cn_id,
+            ros2_domain_id=cfg.get("ros2_domain_id", None),
+        )
+
+        rclpy.spin(monitor)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
 
 
 if __name__ == "__main__":

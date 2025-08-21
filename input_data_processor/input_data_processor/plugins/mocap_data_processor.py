@@ -1,7 +1,7 @@
 from core_bases.data_processor_base import DataProcessorBase
 from typing import Dict, List, Any, Optional
 import rclpy
-import yaml
+import json
 import numpy as np
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
@@ -12,7 +12,7 @@ from component_interfaces.msg import (
     ProcessedHandKeypoint
 )
 from std_msgs.msg import Header
-from geometry_msgs.msg import Point
+from geometry_msgs.msg import Point, Pose
 from builtin_interfaces.msg import Time
 
 class RococoHandKeypointProcessor(DataProcessorBase):
@@ -47,7 +47,8 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         """Override the base initialization for Rococo specific setup"""
         self.get_logger().info(f"Initializing RococoHandKeypointProcessor: {self.layer_cn_id}")
 
-        # self._load_processor_config()
+        # Load configurations
+        self._load_config()
         
         # Register publishers and subscribers
         self.register_pub_sub()
@@ -60,56 +61,70 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             
         self.get_logger().info("RococoHandKeypointProcessor initialized successfully")
 
-    # def _load_processor_config(self):
-    #     """Load processor-specific configuration"""
-    #     try:
-    #         config_data = self.get_config("input_control_data_processor.yaml")
-    #         if config_data:
-    #             config = yaml.safe_load(config_data) if isinstance(config_data, str) else config_data
-    #             if "plugins" in config and len(config["plugins"]) > 0:
-    #                 plugin_params = config["plugins"][0].get("params", {})
-    #                 self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
-    #                 self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
-    #     except Exception as e:
-    #         self.handle_error(f"Failed to load processor config: ", e)
+    def _load_config(self):
+        """Load processor-specific configuration using component_node config methods"""
+        try:
+            # Load this component's specific configuration
+            self.my_config = self.load_my_config()
+            if self.my_config and "plugins" in self.my_config:
+                # Extract processing frequency from plugin parameters if available
+                plugins = self.my_config["plugins"]
+                for plugin in plugins:
+                    if plugin.get('id') == 'rococo_handkeypoint_processor' or plugin.get('_target_', '').endswith('RococoHandKeypointProcessor'):
+                        plugin_params = plugin.get('params', {})
+                        self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
+                        self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
+                        break
+            
+            # Load data stream configuration
+            self.data_stream_config = self.load_data_stream_config()
+            if not self.data_stream_config:
+                self.get_logger().warn("Failed to load data stream configuration")
+                
+        except Exception as e:
+            self.handle_error(f"Failed to load processor config: ", e)
 
     def register_pub_sub(self):
-        """Register publishers and subscribers based on data_stream.yaml configuration"""
+        """Register publishers and subscribers based on data_stream configuration"""
         try:
-            # Get data stream configuration
-            config_data = self.get_config("data_stream.yaml")
-            if config_data:
-                data_config = yaml.safe_load(config_data) if isinstance(config_data, str) else data_config
+            # Use the loaded data_stream_config from _load_processor_config()
+            if not self.data_stream_config:
+                self.handle_error("Data stream configuration not loaded")
+                return
                 
-                # Find topics where this node is a subscriber
-                if "topics" in data_config:
-                    for topic_config in data_config["topics"]:
-                        topic_id = topic_config["id"]
-                        
-                        # Subscribe to topics where this node is a subscriber
-                        if self.layer_cn_id in topic_config.get("subscribers", []):
-                            msg_type = topic_config["msg_type"]
-                            
-                            if msg_type == "component_interfaces/msg/RawHandKeypoint":
-                                self.raw_data_subscribers[topic_id] = self.create_subscription(
-                                    RawHandKeypoint,
-                                    topic_id,
-                                    self.raw_data_callback,
-                                    10
-                                )
-                                self.get_logger().info(f"Subscribed to raw data: {topic_id}")
-                        
-                        # Create publishers for topics where this node is the publisher
-                        if topic_config.get("publisher") == self.layer_cn_id:
-                            msg_type = topic_config["msg_type"]
-                            
-                            if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
-                                self.processed_data_publishers[topic_id] = self.create_publisher(
-                                    ProcessedHandKeypoint,
-                                    topic_id,
-                                    10
-                                )
-                                self.get_logger().info(f"Created publisher for processed data: {topic_id}")
+            # Find topics where this node is a subscriber or publisher
+            topics = self.data_stream_config.get("topics", [])
+            if not topics:
+                self.get_logger().warn("No topics found in data stream configuration")
+                return
+                
+            for topic_config in topics:
+                topic_id = topic_config["id"]
+                
+                # Subscribe to topics where this node is a subscriber
+                if self.layer_cn_id in topic_config.get("subscribers", []):
+                    msg_type = topic_config["msg_type"]
+                    
+                    if msg_type == "component_interfaces/msg/RawHandKeypoint":
+                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                            RawHandKeypoint,
+                            topic_id,
+                            self.raw_data_callback,
+                            10
+                        )
+                        self.get_logger().info(f"Subscribed to raw data: {topic_id}")
+                
+                # Create publishers for topics where this node is the publisher
+                if topic_config.get("publisher") == self.layer_cn_id:
+                    msg_type = topic_config["msg_type"]
+                    
+                    if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
+                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                            ProcessedHandKeypoint,
+                            topic_id,
+                            10
+                        )
+                        self.get_logger().info(f"Created publisher for processed data: {topic_id}")
             
             self.get_logger().info("All publishers and subscribers registered successfully")
             
@@ -133,7 +148,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             self.get_logger().debug(f"Processing hand keypoint data #{self.processing_counter}")
             
             # Process the raw data
-            processed_msg = self.process_right_hand(raw_data)
+            processed_msg = self.process_hand(raw_data, is_left=False)
             
             # Publish processed data
             self.publish_processed_data("right_hand_keypoint_processed", processed_msg)
@@ -229,38 +244,109 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             poses.append(pose)
         return poses
     
-    def create_wrist_pose(self, wrist_position, wrist_orientation):
+    def create_wrist_pose(self, wrist_position, wrist_orientation=None):
         """Create a Pose message for the wrist with both position and orientation"""
         pose = Pose()
         pose.position.x = float(wrist_position[0])
         pose.position.y = float(wrist_position[1])
         pose.position.z = float(wrist_position[2])
         
-        pose.orientation.x = float(wrist_orientation[0])
-        pose.orientation.y = float(wrist_orientation[1])
-        pose.orientation.z = float(wrist_orientation[2])
-        pose.orientation.w = float(wrist_orientation[3])
+        if wrist_orientation is not None:
+            pose.orientation.x = float(wrist_orientation[0])
+            pose.orientation.y = float(wrist_orientation[1])
+            pose.orientation.z = float(wrist_orientation[2])
+            pose.orientation.w = float(wrist_orientation[3])
+        else:
+            # Default orientation (no rotation)
+            pose.orientation.x = 0.0
+            pose.orientation.y = 0.0
+            pose.orientation.z = 0.0
+            pose.orientation.w = 1.0
         
         return pose
     
-    def process_left_hand(self, raw_data: RawHandKeypoint):
-        """Process left hand raw keypoints"""
+    def points_to_numpy_array(self, points):
+        """Convert list of geometry_msgs/Point to numpy array"""
+        positions = np.zeros((len(points), 3))
+        for i, point in enumerate(points):
+            positions[i] = [point.x, point.y, point.z]
+        return positions
+    
+    def numpy_array_to_points(self, positions):
+        """Convert numpy array to list of geometry_msgs/Point"""
+        points = []
+        for i in range(len(positions)):
+            point = Point()
+            point.x = float(positions[i][0])
+            point.y = float(positions[i][1])
+            point.z = float(positions[i][2])
+            points.append(point)
+        return points
+    
+    def normalize_wrt_middle_proximal(self, hand_positions, is_left=True):
+        """Normalize hand positions with respect to middle proximal joint (Point version)"""
+        if is_left:
+            middle_proximal_idx = self.left_hand_joint_names.index('leftMiddleProximal')
+        else:
+            middle_proximal_idx = self.right_hand_joint_names.index('rightMiddleProximal')
+        
+        if len(hand_positions) <= middle_proximal_idx:
+            self.get_logger().warn(f"Not enough hand positions for middle proximal joint at index {middle_proximal_idx}")
+            return hand_positions
+        
+        wrist_position = hand_positions[0]
+        middle_proximal_position = hand_positions[middle_proximal_idx]
+        bone_length = np.linalg.norm(wrist_position - middle_proximal_position)
+        
+        if bone_length > 0:
+            normalized_positions = (middle_proximal_position - hand_positions) / bone_length
+        else:
+            normalized_positions = hand_positions  # Fallback if bone_length is 0
+        
+        return normalized_positions
+    
+    def extract_finger_joints(self, hand_positions, is_left=True):
+        """Extract joint positions for each finger from hand positions (Point version)"""
+        if is_left:
+            joint_names = self.left_hand_joint_names
+        else:
+            joint_names = self.right_hand_joint_names
+        
+        # Ensure we have enough positions
+        if len(hand_positions) < len(joint_names):
+            self.get_logger().warn(f"Not enough hand positions: {len(hand_positions)} < {len(joint_names)}")
+            # Pad with zeros if needed
+            padded_positions = np.zeros((len(joint_names), 3))
+            padded_positions[:len(hand_positions)] = hand_positions
+            hand_positions = padded_positions
+        
+        # Extract finger joints (skip wrist at index 0)
+        thumb_joints = hand_positions[1:5]    # indices 1-4
+        index_joints = hand_positions[5:9]    # indices 5-8
+        middle_joints = hand_positions[9:13]  # indices 9-12
+        ring_joints = hand_positions[13:17]   # indices 13-16
+        pinky_joints = hand_positions[17:21]  # indices 17-20
+        
+        return thumb_joints, index_joints, middle_joints, ring_joints, pinky_joints
+    
+    def process_hand(self, raw_data: RawHandKeypoint, is_left=False):
+        """Process hand raw keypoints"""
         try:
             # Convert poses to numpy arrays
             hand_positions, hand_orientations = self.poses_to_numpy_arrays(raw_data.fingertips)
             
             # Normalize positions (orientations remain unchanged)
             normalized_positions, orientations = self.normalize_poses_wrt_middle_proximal(
-                hand_positions, hand_orientations, is_left=True)
+                hand_positions, hand_orientations, is_left=is_left)
             
             # Extract finger poses
             thumb_poses, index_poses, middle_poses, ring_poses, pinky_poses = self.extract_finger_poses(
-                normalized_positions, orientations, is_left=True)
+                normalized_positions, orientations, is_left=is_left)
             
             # Create processed message
             processed_msg = ProcessedHandKeypoint()
             processed_msg.header = raw_data.header
-            processed_msg.header.stamp = rospy.Time.now()
+            processed_msg.header.stamp = self.get_clock().now().to_msg()
             
             # Set finger poses
             processed_msg.thumb_joints = thumb_poses
@@ -278,45 +364,8 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             return processed_msg
                                     
         except Exception as e:
-            self.handle_error("Error processing right hand data: ", e)
+            self.handle_error("Error processing hand data: ", e)
     
-    def process_right_hand(self, raw_data: RawHandKeypoint):
-        """Process right hand raw keypoints"""
-        try:
-            # Convert fingertips to numpy array
-            hand_positions = self.points_to_numpy_array(raw_data.fingertips)
-            
-            # Normalize positions
-            normalized_positions = self.normalize_wrt_middle_proximal(hand_positions, is_left=False)
-            
-            # Extract finger joints
-            thumb_joints, index_joints, middle_joints, ring_joints, pinky_joints = self.extract_finger_joints(
-                normalized_positions, is_left=False)
-            
-            # Create processed message
-            processed_msg = ProcessedHandKeypoint()
-            processed_msg.header = raw_data.header
-            processed_msg.header.stamp = rospy.Time.now()
-            
-            # Convert numpy arrays back to Point messages
-            processed_msg.thumb_joints = self.numpy_array_to_points(thumb_joints)
-            processed_msg.index_joints = self.numpy_array_to_points(index_joints)
-            processed_msg.middle_joints = self.numpy_array_to_points(middle_joints)
-            processed_msg.ring_joints = self.numpy_array_to_points(ring_joints)
-            processed_msg.pinky_joints = self.numpy_array_to_points(pinky_joints)
-            
-            # Set wrist pose
-            processed_msg.wrist = self.create_wrist_pose(normalized_positions[0])
-            
-            # Set joint names
-            processed_msg.joint_names = self.right_hand_joint_names
-            
-            return processed_msg
-                        
-        except Exception as e:
-            self.handle_error("Error processing right hand data: ", e)
-
-
     def check_plugins(self):
         """Verify that required methods are implemented"""
         required_methods = ['process_data', 'raw_data_callback', 'register_pub_sub']

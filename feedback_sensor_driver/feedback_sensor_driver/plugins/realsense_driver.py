@@ -1,7 +1,6 @@
 import rclpy
 from rclpy.timer import Timer
 import json
-import yaml
 import numpy as np
 import cv2
 from typing import Dict, List, Any, Optional
@@ -50,68 +49,135 @@ class RealsenseDriver(SensorDriverBase):
         
         # Start streaming timer
         self._start_streaming()
-        
 
-    @Override
     def _initialize_node(self):
-        # self._load_plugin_params()
+        """Override the base initialization for RealsenseDriver specific setup"""
+
+        # Load configurations using ComponentNode methods
+        self._load_configs()
+
+        # Load sensor configuration from hardware config
+        self._load_sensor_config_from_hardware()
+        
         self.register_pub_sub()
 
         if self.check_plugins():
             self.set_state("ready")
 
-    # def _load_plugin_params(self):
-    #     """Load plugin-specific parameters from configuration."""
-    #     try:
-    #         config_data = self.get_config(f"{self.layer_cn_id}.yaml")
-    #         if config_data:
-    #             if config_data.strip().startswith('{'):
-    #                 config = json.loads(config_data)
-    #             else:
-    #                 config = yaml.safe_load(config_data)
+    def _load_configs(self):
+        """Load all required configurations using ComponentNode methods"""
+        try:
+            # Load component-specific configuration
+            self.my_config = self.load_my_config()
+            if not self.my_config:
+                self.get_logger().warn(f"No component config found for {self.layer_cn_id}")
+                self.my_config = {}
+            
+            # Load data stream configuration
+            self.data_stream_config = self.load_data_stream_config()
+            if not self.data_stream_config:
+                self.get_logger().error("Failed to load data stream configuration")
+                self.data_stream_config = {}
+            
+            # Load hardware configuration for sensor settings
+            self.hardware_config = self.load_hardware_config()
+            if not self.hardware_config:
+                self.get_logger().warn("No hardware config found")
+                self.hardware_config = {}
+            
+            # Load plugin parameters from component config
+            self._load_plugin_params_from_config()
+            
+            self.get_logger().info("All configurations loaded successfully")
+            
+        except Exception as e:
+            self.handle_error("Failed to load configurations", e)
+
+    def _load_plugin_params_from_config(self):
+        """Load plugin-specific parameters from loaded configuration."""
+        try:
+            if self.my_config and "plugins" in self.my_config:
+                plugins = self.my_config["plugins"]
+                for plugin in plugins:
+                    if plugin.get('id') == 'realsense_driver' or plugin.get('_target_', '').endswith('RealsenseDriver'):
+                        params = plugin.get('params', {})
+                        self.cam_ids = params.get('cam_ids', self.cam_ids)
+                        self.width = params.get('width', self.width)
+                        self.height = params.get('height', self.height)
+                        self.fps = params.get('fps', self.fps)
+                        self.fps_sim = params.get('fps_sim', self.fps_sim)
+                        self.rotation_angle = params.get('rotation_angle', self.rotation_angle)
+                        self.processing_preset = params.get('processing_preset', self.processing_preset)
+                        
+                        # Load constants
+                        constants = params.get('constants', {})
+                        self.VISUAL_RESCALE_FACTOR = constants.get('VISUAL_RESCALE_FACTOR', self.VISUAL_RESCALE_FACTOR)
+                        self.VIZ_PORT_OFFSET = constants.get('VIZ_PORT_OFFSET', self.VIZ_PORT_OFFSET)
+                        self.DEPTH_PORT_OFFSET = constants.get('DEPTH_PORT_OFFSET', self.DEPTH_PORT_OFFSET)
+                        break
+                        
+                self.get_logger().info(f"Loaded plugin params: cams={self.cam_ids}, res={self.width}x{self.height}, fps={self.fps}")
+            else:
+                self.get_logger().warn("Using default plugin parameters - no plugin config found")
                 
-    #             # Extract parameters from plugin params
-    #             plugins = config.get('plugins', [])
-    #             for plugin in plugins:
-    #                 if plugin.get('id') == 'realsense_driver' or plugin.get('class_path', '').endswith('RealsenseDriver'):
-    #                     params = plugin.get('params', {})
-    #                     self.cam_ids = params.get('cam_ids', [0])
-    #                     self.width = params.get('width', 1280)
-    #                     self.height = params.get('height', 720)
-    #                     self.fps = params.get('fps', 30)
-    #                     self.fps_sim = params.get('fps_sim', 60)
-    #                     self.rotation_angle = params.get('rotation_angle', 0)
-    #                     self.processing_preset = params.get('processing_preset', 1)
+        except Exception as e:
+            self.handle_error("Error loading plugin params from config", e)
+
+    def _load_sensor_config_from_hardware(self):
+        """Load sensor configuration from hardware config."""
+        try:
+            if self.hardware_config and 'sensors' in self.hardware_config:
+                # Convert list format to dictionary for easier access
+                hardware_list = self.hardware_config.get('sensors', [])
+                self.sensor_config = {}
+                
+                for hw_item in hardware_list:
+                    if isinstance(hw_item, dict) and 'hardware_id' in hw_item:
+                        hardware_id = hw_item['hardware_id']
+                        if hardware_id != 'realsense':
+                            continue
+                        # Create sensor config entry with IP and access info
+                        sensor_info = {
+                            'ip': hw_item.get('ip', ''),
+                            'access_port': hw_item.get('access_port', 22),
+                            'description': f"Sensor on {hardware_id}",
+                            'execution_platform': hw_item.get('execution_plattform', False)
+                        }
                         
-    #                     # Load constants
-    #                     constants = params.get('constants', {})
-    #                     self.VISUAL_RESCALE_FACTOR = constants.get('VISUAL_RESCALE_FACTOR', 2)
-    #                     self.VIZ_PORT_OFFSET = constants.get('VIZ_PORT_OFFSET', 500)
-    #                     self.DEPTH_PORT_OFFSET = constants.get('DEPTH_PORT_OFFSET', 1000)
-    #                     break
-                        
-    #             self.logging(f"Loaded plugin params: cams={self.cam_ids}, res={self.width}x{self.height}, fps={self.fps}", "INFO")
-    #         else:
-    #             self.logging("Using default plugin parameters", "WARN")
-    #     except Exception as e:
-    #         self.handle_error(f"Error loading plugin params: ", e)
+                        # Add SSH info if available
+                        if 'ssh' in hw_item:
+                            sensor_info.update(hw_item['ssh'])
+                            
+                        self.sensor_config[hardware_id] = sensor_info
+                
+                self.get_logger().info(f"Loaded sensor config for hardware: {list(self.sensor_config.keys())}")
+            else:
+                self.get_logger().warn("No hardware configuration found for sensors")
+                self.sensor_config = {}
+                
+        except Exception as e:
+            self.handle_error("Error loading sensor config from hardware", e)
+            self.sensor_config = {}
+
+    def get_sensor_ip_port(self, sensor_id: str) -> Optional[tuple]:
+        """Get sensor IP and port by sensor ID."""
+        if sensor_id in self.sensor_config:
+            sensor_info = self.sensor_config[sensor_id]
+            ip = sensor_info.get('ip')
+            port = sensor_info.get('access_port')
+            if ip and port:
+                return (ip, port)
+        return None
             
     def register_pub_sub(self):
         """Register publishers and subscribers based on data stream configuration."""
         try:
-            # Get data stream configuration
-            config_data = self.get_config("data_stream.yaml")
-            if not config_data:
-                self.handle_error("Failed to load data stream configuration")
+            # Use the loaded data_stream_config instead of manually parsing YAML/JSON
+            if not self.data_stream_config or "topics" not in self.data_stream_config:
+                self.handle_error("Data stream configuration not available or invalid")
                 return
-                
-            # Parse configuration
-            if config_data.strip().startswith('{'):
-                stream_config = json.loads(config_data)
-            else:
-                stream_config = yaml.safe_load(config_data)
             
-            topics = stream_config.get('topics', [])
+            topics = self.data_stream_config.get('topics', [])
             
             # Find topics where this node is the publisher
             for topic in topics:
@@ -128,25 +194,25 @@ class RealsenseDriver(SensorDriverBase):
                             10
                         )
                         self.data_publishers[topic_id] = publisher
-                        self.logging(f"Created publisher for {topic_id} with type {msg_type}", "INFO")
+                        self.get_logger().info(f"Created publisher for {topic_id} with type {msg_type}")
                     else:
-                        self.logging(f"Unsupported message type: {msg_type} for topic {topic_id}", "WARN")
+                        self.get_logger().warn(f"Unsupported message type: {msg_type} for topic {topic_id}")
             
-            self.logging(f"Registered {len(self.data_publishers)} publishers", "INFO")
+            self.get_logger().info(f"Registered {len(self.data_publishers)} publishers")
             
         except Exception as e:
-            self.handle_error(f"Error in register_pub_sub: ", e)
+            self.handle_error("Error in register_pub_sub", e)
 
     def start_sensor(self, sensor_id: str) -> bool:
         """Start the RealSense camera sensor."""
         try:
-            self.logging(f"Starting RealSense sensor: {sensor_id}", "INFO")
+            self.get_logger().info(f"Starting RealSense sensor: {sensor_id}")
             
             # Get sensor connection info
             connection_info = self.get_sensor_ip_port(sensor_id)
             if connection_info:
                 ip, port = connection_info
-                self.logging(f"Connecting to RealSense camera at {ip}:{port}", "INFO")
+                self.get_logger().info(f"Connecting to RealSense camera at {ip}:{port}")
             
             # Simulate camera initialization for each cam_id
             for cam_id in self.cam_ids:
@@ -160,33 +226,33 @@ class RealsenseDriver(SensorDriverBase):
                     'frame_count': 0
                 }
                 self.camera_connections[cam_id] = camera_config
-                self.logging(f"Initialized camera {cam_id} with config: {self.width}x{self.height}@{self.fps}fps", "INFO")
+                self.get_logger().info(f"Initialized camera {cam_id} with config: {self.width}x{self.height}@{self.fps}fps")
             
             self.sensor_active = True
-            self.logging(f"RealSense sensor {sensor_id} started successfully with {len(self.cam_ids)} cameras", "INFO")
+            self.get_logger().info(f"RealSense sensor {sensor_id} started successfully with {len(self.cam_ids)} cameras")
             return True
                 
         except Exception as e:
-            self.handle_error(f"Error starting sensor {sensor_id}: ", e)
+            self.handle_error(f"Error starting sensor {sensor_id}", e)
             return False
 
     def stop_sensor(self, sensor_id: str) -> bool:
         """Stop the RealSense camera sensor."""
         try:
-            self.logging(f"Stopping RealSense sensor: {sensor_id}", "INFO")
+            self.get_logger().info(f"Stopping RealSense sensor: {sensor_id}")
             
             # Stop all cameras
             for cam_id in list(self.camera_connections.keys()):
                 self.camera_connections[cam_id]['active'] = False
                 del self.camera_connections[cam_id]
-                self.logging(f"Stopped camera {cam_id}", "INFO")
+                self.get_logger().info(f"Stopped camera {cam_id}")
             
             self.sensor_active = False
-            self.logging(f"RealSense sensor {sensor_id} stopped successfully", "INFO")
+            self.get_logger().info(f"RealSense sensor {sensor_id} stopped successfully")
             return True
             
         except Exception as e:
-            self.handle_error(f"Error stopping sensor {sensor_id}: ", e)
+            self.handle_error(f"Error stopping sensor {sensor_id}", e)
             return False
 
     def get_data_from_sensor(self, sensor_id: str) -> Any:
@@ -223,7 +289,7 @@ class RealsenseDriver(SensorDriverBase):
             return sensor_data if sensor_data else None
             
         except Exception as e:
-            self.handle_error(f"Error getting data from sensor {sensor_id} ", e)
+            self.handle_error(f"Error getting data from sensor {sensor_id}", e)
             return None
 
     def _generate_dummy_rgb_image(self, cam_id: int, cam_config: Dict) -> np.ndarray:
@@ -284,7 +350,7 @@ class RealsenseDriver(SensorDriverBase):
             return img_msg
             
         except Exception as e:
-            self.handle_error(f"Error creating image message for cam {cam_id}: ", e)
+            self.handle_error(f"Error creating image message for cam {cam_id}", e)
             return None
 
     def stream(self):
@@ -308,14 +374,14 @@ class RealsenseDriver(SensorDriverBase):
                         img_msg = self._create_image_msg(rgb_image, timestamp, cam_id)
                         if img_msg is not None:
                             self.publish_data('scene_image_raw', img_msg)
-                            self.logging(f"Published scene image from camera {cam_id}", "DEBUG")
+                            self.get_logger().debug(f"Published scene image from camera {cam_id}")
                     else:
-                        self.logging("No publisher found for scene_image_raw", "WARN")
+                        self.get_logger().warn("No publisher found for scene_image_raw")
             else:
-                self.logging("No data received from RealSense cameras", "DEBUG")
+                self.get_logger().debug("No data received from RealSense cameras")
                 
         except Exception as e:
-            self.handle_error(f"Error in stream: ", e)
+            self.handle_error("Error in stream", e)
 
     def _start_streaming(self):
         """Start the streaming timer."""
@@ -329,7 +395,7 @@ class RealsenseDriver(SensorDriverBase):
         # Start the RealSense sensor
         self.start_sensor('realsense')
         
-        self.logging(f"Started streaming timer at {self.fps}Hz", "INFO")
+        self.get_logger().info(f"Started streaming timer at {self.fps}Hz")
 
     def check_plugins(self) -> bool:
         """Verify that this driver implements required interfaces."""
@@ -340,12 +406,12 @@ class RealsenseDriver(SensorDriverBase):
                 self.handle_error(f"Missing required method: {method_name}")
                 return False
                 
-        self.logging("All required plugin methods implemented", "INFO")
+        self.get_logger().info("All required plugin methods implemented")
         return True
 
     def urgent_stop(self):
         """Emergency stop - stop streaming and cameras."""
-        self.logging("Emergency stop triggered", "WARN")
+        self.get_logger().warn("Emergency stop triggered")
         
         # Cancel timer
         if self.timer is not None:
@@ -356,9 +422,9 @@ class RealsenseDriver(SensorDriverBase):
         self.stop_sensor('realsense')
         self.set_state("disconnected")
         
-        self.logging("Emergency stop completed", "WARN")
+        self.get_logger().warn("Emergency stop completed")
 
     def wait(self):
         """Wait for any pending operations to complete."""
         if self.timer is not None and self.sensor_active:
-            self.logging("Waiting for camera streaming operations to complete", "DEBUG")
+            self.get_logger().debug("Waiting for camera streaming operations to complete")

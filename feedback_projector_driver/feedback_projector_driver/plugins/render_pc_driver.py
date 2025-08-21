@@ -74,14 +74,14 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
             
             # Override display parameters from component config if available
             if self.my_config and "plugins" in self.my_config:
-                plugins = self.my_config["plugins"]
-                if plugins and len(plugins) > 0:
-                    plugin_params = plugins[0].get("params", {})
-                    self.width = plugin_params.get("width", self.width)
-                    self.height = plugin_params.get("height", self.height)
-                    self.projection_interval = plugin_params.get("projection_interval", self.projection_interval)
-                    self.get_logger().info(f"Loaded display config: {self.width}x{self.height}, interval: {self.projection_interval}s")
-            
+                for plugin in self.my_config["plugins"]:
+                    if plugin.get("id") == "render_pc_driver":
+                        plugin_params = plugin.get("params", {})
+                        self.width = plugin_params.get("width", self.width)
+                        self.height = plugin_params.get("height", self.height)
+                        self.projection_interval = plugin_params.get("projection_interval", self.projection_interval)
+                        self.get_logger().info(f"Loaded display config: {self.width}x{self.height}, interval: {self.projection_interval}s")
+                        break
             self.get_logger().info("All configurations loaded successfully")
             
         except Exception as e:

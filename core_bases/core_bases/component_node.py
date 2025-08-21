@@ -5,10 +5,11 @@ import rclpy
 from rclpy.node import Node
 from typing import Dict, List, Any, Optional
 from builtin_interfaces.msg import Time
+import json
 
-from system_manager_interfaces.srv import Logging, GetConfig
+from system_interfaces.srv import Logging, GetConfig
 from system_interfaces.msg import ComponentStatus, SystemCommand
-
+import time
 
 class ComponentNode(Node, ABC):
     """
@@ -190,18 +191,46 @@ class ComponentNode(Node, ABC):
     # ------------------------------------------------------------------
     
 
-    def pause_component(self):
-        """Pause the component (running -> ready)"""
-        self.set_state("ready")
-        self._wait_for_start_cmd()
-
+    # If DataProcessorBase doesn't inherit from ComponentNode, you need these methods:
     def _wait_for_start_cmd(self):
-        while self.state != 'running':
-            time.sleep(1)
-
+        """Non-blocking wait for start command using ROS2 timer"""
+        self.get_logger().info(f"Waiting for start command... Current state: {self.state}")
+        
+        # Cancel existing timer if any
+        if hasattr(self, 'wait_timer') and self.wait_timer is not None:
+            self.wait_timer.cancel()
+        
+        # Create a timer that checks periodically (non-blocking)
+        self.wait_timer = self.create_timer(1.0, self._check_start_condition)
+    
+    def _check_start_condition(self):
+        """Timer callback to check if we should continue waiting"""
+        if self.state == 'running':
+            # Stop waiting, cancel timer
+            if hasattr(self, 'wait_timer') and self.wait_timer is not None:
+                self.wait_timer.cancel()
+                self.wait_timer = None
+            self.get_logger().info("Start condition met - component is now running!")
+        else:
+            # Still waiting
+            self.get_logger().debug(f"Still waiting for start command... State: {self.state}")
+    
     def start_component(self):
         """Start triggered by SystemManager. Need to change the state"""
+        self.get_logger().info(f"Starting component: {self.layer_cn_id}")
         self.set_state('running')
+        
+        # Cancel wait timer if it exists
+        if hasattr(self, 'wait_timer') and self.wait_timer is not None:
+            self.wait_timer.cancel()
+            self.wait_timer = None
+            self.get_logger().info("Wait timer cancelled - component now running")
+
+    def pause_component(self):
+        """Pause the component (running -> ready)"""
+        self.get_logger().info(f"Pausing component: {self.layer_cn_id}")
+        self.set_state("ready")
+        self._wait_for_start_cmd()
 
     # ------------------------------------------------------------------
     # Error handling methods

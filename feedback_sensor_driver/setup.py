@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'feedback_sensor_driver_node = feedback_sensor_driver.feedback_sensor_driver_node:main'
         ],
     },
 )

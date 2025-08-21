@@ -38,3 +38,12 @@ class DockerMonitor(KPIMonitorBase):
         # Example dummy metrics
         self.kpi_metrics.append({'cpu': 0.45, 'mem': 230.0})
         self.kpi_metrics.append({'cpu': 0.25, 'mem': 231.0})
+
+    def register_pub_sub(self):
+        pass
+
+    def urgent_stop(self):
+        self.set_state("disconnected")
+
+    def check_plugins(self):
+        self.set_state("ready")

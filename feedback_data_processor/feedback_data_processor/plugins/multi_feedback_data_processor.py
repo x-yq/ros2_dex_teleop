@@ -71,13 +71,14 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                 
                 # Override processing types from component config if available
                 if self.my_config and "plugins" in self.my_config:
-                    plugins = self.my_config["plugins"]
-                    if plugins and len(plugins) > 0:
-                        plugin_params = plugins[0].get("params", {})
-                        if "types" in plugin_params:
-                            self.processing_types = plugin_params["types"]
-                            self.get_logger().info(f"Loaded processing types from config: {self.processing_types}")
-                
+                    for plugin in self.my_config["plugins"]:
+                        if plugin.get("id") == "multi_feedback":
+                            plugin_params = plugin.get("params", {})
+                            if "types" in plugin_params:
+                                self.processing_types = plugin_params["types"]
+                                self.get_logger().info(f"Loaded processing types from config: {self.processing_types}")
+                            break
+                            
                 self.get_logger().info("All configurations loaded successfully")
                 
             except Exception as e:
@@ -238,26 +239,63 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             self.handle_error("Error processing robot state: ", e)
 
     def _generate_2d_plot_data(self, hand_data: ProcessedHandKeypoint) -> Hand2DPlotData:
-        """Generate 2D plot data from 3D hand keypoints"""
+        """Generate 2D plot data from 3D hand pose data"""
         plot_msg = Hand2DPlotData()
         plot_msg.header = hand_data.header
         plot_msg.header.stamp = self.get_clock().now().to_msg()
         plot_msg.hand_id = "right_hand"
         
-        # Convert 3D points to 2D (simple projection)
-        all_joints = []
-        all_joints.extend(hand_data.thumb_joints)
-        all_joints.extend(hand_data.index_joints)
-        all_joints.extend(hand_data.middle_joints)
-        all_joints.extend(hand_data.ring_joints)
-        all_joints.extend(hand_data.pinky_joints)
-        all_joints.append(hand_data.wrist)
+        # Extract position data from poses
+        all_positions = []
+        
+        # Extract thumb joint positions
+        if hasattr(hand_data, 'thumb_joints') and hand_data.thumb_joints:
+            for pose in hand_data.thumb_joints:
+                all_positions.append(pose.position)
+        
+        # Extract index joint positions  
+        if hasattr(hand_data, 'index_joints') and hand_data.index_joints:
+            for pose in hand_data.index_joints:
+                all_positions.append(pose.position)
+        
+        # Extract middle joint positions
+        if hasattr(hand_data, 'middle_joints') and hand_data.middle_joints:
+            for pose in hand_data.middle_joints:
+                all_positions.append(pose.position)
+        
+        # Extract ring joint positions
+        if hasattr(hand_data, 'ring_joints') and hand_data.ring_joints:
+            for pose in hand_data.ring_joints:
+                all_positions.append(pose.position)
+        
+        # Extract pinky joint positions
+        if hasattr(hand_data, 'pinky_joints') and hand_data.pinky_joints:
+            for pose in hand_data.pinky_joints:
+                all_positions.append(pose.position)
+        
+        # Extract wrist position (assuming wrist is also a pose)
+        if hasattr(hand_data, 'wrist') and hand_data.wrist:
+            # Check if wrist is a pose or just position data
+            if hasattr(hand_data.wrist, 'position'):
+                all_positions.append(hand_data.wrist.position)
+            else:
+                # If wrist is just position data, create a Point from it
+                wrist_point = Point()
+                wrist_point.x = hand_data.wrist[0] if isinstance(hand_data.wrist, (list, tuple)) and len(hand_data.wrist) >= 3 else 0.0
+                wrist_point.y = hand_data.wrist[1] if isinstance(hand_data.wrist, (list, tuple)) and len(hand_data.wrist) >= 3 else 0.0
+                wrist_point.z = hand_data.wrist[2] if isinstance(hand_data.wrist, (list, tuple)) and len(hand_data.wrist) >= 3 else 0.0
+                all_positions.append(wrist_point)
         
         # Simple 3D to 2D projection (ignore Z coordinate with some scaling)
-        plot_msg.x_coords = [joint.x * 100 + 320 for joint in all_joints]  # Scale and center
-        plot_msg.y_coords = [joint.y * 100 + 240 for joint in all_joints]  # Scale and center
+        plot_msg.x_coords = [pos.x * 100 + 320 for pos in all_positions]  # Scale and center
+        plot_msg.y_coords = [pos.y * 100 + 240 for pos in all_positions]  # Scale and center
         
-        plot_msg.joint_names = hand_data.joint_names
+        # Use joint names from hand data if available
+        if hasattr(hand_data, 'joint_names') and hand_data.joint_names:
+            plot_msg.joint_names = hand_data.joint_names
+        else:
+            # Generate default joint names based on count
+            plot_msg.joint_names = [f"joint_{i}" for i in range(len(all_positions))]
         
         return plot_msg
 
