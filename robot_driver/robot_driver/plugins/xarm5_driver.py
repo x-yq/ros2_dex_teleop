@@ -51,7 +51,7 @@ class XArm5Driver(RobotDriverBase):
         self.command_timeout = 5.0  # seconds
 
         self._initialize_node()
-        self._wait_for_start_cmd()
+        # self._wait_for_start_cmd()
 
         # Start state publishing timer
         self._start_state_publishing()
@@ -151,6 +151,9 @@ class XArm5Driver(RobotDriverBase):
     def cmd_sub_callback(self, msg: JointAngles, topic_id: str):
         """Callback for joint angle commands."""
         try:
+            if self.state!='running':
+                return  
+
             self.logging(f"Received joint angles command on {topic_id}", "DEBUG")
             
             # Validate robot ID
@@ -307,6 +310,9 @@ class XArm5Driver(RobotDriverBase):
             return
             
         try:
+            if self.state != 'running':
+                return 
+                
             # Get current robot state
             robot_state = self.get_state("xarm5_robot")
             

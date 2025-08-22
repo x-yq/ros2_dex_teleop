@@ -35,7 +35,7 @@ class MotionRetargetOT(MotionRetargetBase):
         
         # Initialize retargeting parameters
         self._initialize_node()
-        self._wait_for_start_cmd()
+        # self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for MotionRetargetOT specific setup"""
@@ -166,6 +166,9 @@ class MotionRetargetOT(MotionRetargetBase):
             
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
+        if self.state!='running':
+            return  
+
         self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
         
         # Retarget the hand data to robot commands

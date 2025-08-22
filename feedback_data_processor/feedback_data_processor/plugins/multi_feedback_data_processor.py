@@ -37,7 +37,6 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         # self._load_processor_config()
 
         self._initialize_node()
-        self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for MultiFeedback specific setup"""
@@ -162,6 +161,8 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
 
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
+        if self.state!='running':
+            return
         self.latest_hand_keypoints = msg
         self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
         
@@ -171,6 +172,8 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
 
     def scene_image_callback(self, msg: Image):
         """Callback for raw scene image data"""
+        if self.state!='running':
+            return
         self.latest_scene_image = msg
         self.get_logger().debug("Received raw scene image")
         
@@ -180,6 +183,9 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
 
     def robot_state_callback(self, msg: RobotState):
         """Callback for robot state data"""
+        if self.state!='running':
+            return
+            
         self.latest_robot_state = msg
         self.get_logger().debug(f"Received robot state for {msg.robot_id}")
         

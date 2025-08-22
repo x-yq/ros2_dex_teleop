@@ -25,7 +25,7 @@ class SystemStateMachine:
         self.valid_states = ["disconnected", "paused", "running"]
         self.valid_transitions = {
             "disconnected": ["paused"],
-            "paused": ["running", "disconnected"],
+            "paused": ["running", "paused","disconnected"],
             "running": ["paused"]
         }
     
@@ -226,7 +226,7 @@ class SystemManager(Node):
         except Exception as e:
             self.get_logger().warn(f"Failed to load expected components: {e}")
     
-    def _run_startup_checkup(self, timeout_sec=60, check_interval=1):
+    def _run_startup_checkup(self, timeout_sec=30, check_interval=1):
         """Run comprehensive system checkup during startup with retry until timeout"""
         self.get_logger().info('Running startup system checkup...')
         
@@ -312,58 +312,104 @@ class SystemManager(Node):
         except Exception as e:
             self.get_logger().error(f'Ping failed for {ip_address}: {e}')
             return False
-    
-    def _check_component_status(self):
-        """Check status of all component nodes"""
-        if not self.expected_components:
-            self.get_logger().warn('No expected components defined')
-            return True
+
+    # def _check_component_status(self):
+    #     """Check status of all component nodes"""
+    #     if not self.expected_components:
+    #         self.get_logger().warn('No expected components defined')
+    #         return True
         
-        self.get_logger().info('Checking component node status...')
+    #     self.get_logger().info('Checking component node status...')
         
-        # Clear previous status
+    #     # Clear previous status
+    #     self.awaiting_status_responses = True
+    #     self.component_statuses.clear()
+
+        
+    #     # Send get status command
+    #     cmd_msg = SystemCommand()
+    #     cmd_msg.command = "get_status"
+    #     cmd_msg.timestamp = self.get_clock().now().to_msg()
+    #     cmd_msg.sender = "system_manager"
+        
+    #     self.system_channel_pub.publish(cmd_msg)
+        
+    #     # Wait for responses
+    #     timeout = 15.0
+    #     start_time = time.time()
+        
+    #     while (time.time() - start_time) < timeout:
+    #         rclpy.spin_once(self, timeout_sec=0.1)
+            
+    #         # Check if we got responses from all expected components
+    #         if len(self.component_statuses) >= len(self.expected_components):
+    #             break
+        
+    #     self.awaiting_status_responses = False
+        
+    #     # Analyze results
+    #     all_components_ok = True
+    #     for component in self.expected_components:
+    #         if component in self.component_statuses:
+    #             status = self.component_statuses[component]
+    #             if status not in ['ready', 'running', 'paused']:
+    #                 self.get_logger().error(f'Component {component} not ready: {status}')
+    #                 all_components_ok = False
+    #             else:
+    #                 self.get_logger().info(f'Component OK: {component} ({status})')
+    #         else:
+    #             self.get_logger().error(f'Component {component} not responding')
+    #             all_components_ok = False
+
+    #     # all_components_ok = True
+    #     return all_components_ok
+
+
+    def _check_component_status(self, timeout=10.0):
         self.awaiting_status_responses = True
         self.component_statuses.clear()
 
-        
-        # Send get status command
         cmd_msg = SystemCommand()
         cmd_msg.command = "get_status"
         cmd_msg.timestamp = self.get_clock().now().to_msg()
         cmd_msg.sender = "system_manager"
-        
         self.system_channel_pub.publish(cmd_msg)
+
+        # set a timer that will stop waiting
+        self.checkup_done = False
+        self.create_timer(timeout, self._finish_checkup)
         
-        # Wait for responses
-        timeout = 15.0
-        start_time = time.time()
-        
-        while (time.time() - start_time) < timeout:
-            rclpy.spin_once(self, timeout_sec=0.1)
-            
-            # Check if we got responses from all expected components
-            if len(self.component_statuses) >= len(self.expected_components):
-                break
-        
+        # return immediately (don’t block here)
+        return True
+    
+    def _finish_checkup(self):
+        """Finalize checkup after timeout and analyze results"""
+        if not self.awaiting_status_responses:
+            return  # nothing to do
+
         self.awaiting_status_responses = False
-        
-        # Analyze results
+        self.get_logger().info("Finishing component checkup...")
+
         all_components_ok = True
+
         for component in self.expected_components:
             if component in self.component_statuses:
                 status = self.component_statuses[component]
-                if status not in ['ready', 'running', 'paused']:
-                    self.get_logger().error(f'Component {component} not ready: {status}')
+                if status not in ["ready", "running", "paused"]:
+                    self.get_logger().error(f"Component {component} not ready: {status}")
                     all_components_ok = False
                 else:
-                    self.get_logger().info(f'Component OK: {component} ({status})')
+                    self.get_logger().info(f"Component OK: {component} ({status})")
             else:
-                self.get_logger().error(f'Component {component} not responding')
+                self.get_logger().error(f"Component {component} not responding")
                 all_components_ok = False
 
-        all_components_ok = True
-        return all_components_ok
-    
+        # Save result for later retrieval
+        self.last_checkup_result = all_components_ok
+        self.get_logger().info(
+            f"System checkup {'passed' if all_components_ok else 'failed'}"
+        )
+
     def component_status_callback(self, msg):
         """Handle component status messages"""
         self.component_statuses[msg.layer_cn_id] = msg.status
@@ -612,7 +658,6 @@ class SystemManager(Node):
         """Handle system control commands"""
         try:
             description = request.description.lower()
-            parameters = request.parameters
             
             success = False
             message = ""
@@ -643,10 +688,12 @@ class SystemManager(Node):
                 message = f"Current system state: {self.state_machine.get_current_state()}"
                 
             elif description == "checkup":
+                self.logging("checkup cmd received from user, checking...", "WARN")
                 hardware_ok = self._check_hardware_connections()
                 components_ok = self._check_component_status()
                 success = hardware_ok and components_ok
                 message = f"System checkup {'passed' if success else 'failed'}"
+
             else:
                 success = False
                 message = f"Unknown command: {description}. Available commands: run, pause, urgent_stop, status, checkup"
@@ -659,9 +706,7 @@ class SystemManager(Node):
             # Log system control action
             self.logging(self.system_log_file, 
                         f"SYSTEM_CONTROL: {description} -> {response.system_state} ({'SUCCESS' if success else 'FAILED'})")
-            
-            self.get_logger().info(f"System control: {description} -> {response.system_state}")
-            
+
         except Exception as e:
             response.success = False
             response.message = f"System control error: {e}"

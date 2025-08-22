@@ -6,6 +6,7 @@ from builtin_interfaces.msg import Time, Duration
 
 from .component_node import ComponentNode
 from system_interfaces.srv import StartMonitor, StopMonitor
+import json
 
 
 class KPIMonitorBase(ComponentNode):
@@ -63,6 +64,11 @@ class KPIMonitorBase(ComponentNode):
     # Helper methods
     # ------------------------------------------------------------------
 
-    def log_kpi(self, log_file: str, msg: dict):
+    def log_kpi(self, msg):
         """Use ComponentNode.logging to send KPI data to SystemManager with MONITOR log level."""
-        return self.logging(f"{log_file}: {msg}", log_level="MONITOR")
+        to_log = ''
+        for i in msg:
+            m = json.dumps(i)
+            to_log += m
+        self.get_logger().warn(to_log)
+        self.logging(to_log, log_level="MONITOR")

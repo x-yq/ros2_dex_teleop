@@ -41,7 +41,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         
         # Initialize processing parameters
         self._initialize_node()
-        self._wait_for_start_cmd()
+        # self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for Rococo specific setup"""
@@ -133,6 +133,10 @@ class RococoHandKeypointProcessor(DataProcessorBase):
 
     def raw_data_callback(self, msg: RawHandKeypoint):
         """Callback for raw hand keypoint data"""
+
+        if self.state!='running':
+            return  
+
         self.get_logger().debug(f"Received raw hand keypoint data with {len(msg.fingertips)} fingertips")
         
         # Process the data immediately when received

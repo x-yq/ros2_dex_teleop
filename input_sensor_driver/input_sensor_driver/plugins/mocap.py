@@ -28,9 +28,6 @@ class RococoDriver(SensorDriverBase):
         self.data_publishers = {}
         
         self._initialize_node()
-
-        self._wait_for_start_cmd()
-
         # Start streaming timer
         self._start_streaming()
 
@@ -326,8 +323,12 @@ class RococoDriver(SensorDriverBase):
         """Main streaming function - called by timer."""
         if not self.sensor_active:
             return
-            
+
         try:
+            # self._wait_for_start_cmd()
+            if self.state!='running':
+                return
+            
             # Get data from rococo sensor
             hand_data = self.get_data_from_sensor('rococo')
             

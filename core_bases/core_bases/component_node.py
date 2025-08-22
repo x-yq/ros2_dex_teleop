@@ -6,6 +6,8 @@ from rclpy.node import Node
 from typing import Dict, List, Any, Optional
 from builtin_interfaces.msg import Time
 import json
+import threading
+
 
 from system_interfaces.srv import Logging, GetConfig
 from system_interfaces.msg import ComponentStatus, SystemCommand
@@ -31,6 +33,8 @@ class ComponentNode(Node, ABC):
 
         # Component communication topics
         self._setup_component_communication()
+
+        self._state_cond = threading.Condition()
 
         # Ensure services are ready
         self._wait_for_services()
@@ -61,6 +65,7 @@ class ComponentNode(Node, ABC):
     def _system_command_callback(self, msg):
         """Handle commands from SystemManager"""
         try:
+            # with self._state_cond:
             command = msg.command.lower()
             
             if command == "get_status":
@@ -71,18 +76,23 @@ class ComponentNode(Node, ABC):
                 self.get_logger().warn(f"URGENT STOP command received from {msg.sender}")
                 self.urgent_stop()
                 self.set_state("disconnected")
+                # self._state_cond.notify_all()
                 self._publish_status()
 
             elif command == "start":
                 self.get_logger().warn(f"START command received from {msg.sender}")
-                self.start_component()
+                self.set_state("running")
+                # self._state_cond.notify_all()
+                # self.start_component()
                 self._publish_status()
 
             elif command == "pause":
                 self.get_logger().warn(f"PAUSE command received from {msg.sender}")
-                self.pause_component()
+                self.set_state("ready")
+                # self._state_cond.notify_all()
+                # self.pause_component()
                 self._publish_status()
-                
+                    
             else:
                 self.get_logger().warn(f"Unknown command received: {command}")
                 
@@ -193,44 +203,13 @@ class ComponentNode(Node, ABC):
 
     # If DataProcessorBase doesn't inherit from ComponentNode, you need these methods:
     def _wait_for_start_cmd(self):
-        """Non-blocking wait for start command using ROS2 timer"""
-        self.get_logger().info(f"Waiting for start command... Current state: {self.state}")
-        
-        # Cancel existing timer if any
-        if hasattr(self, 'wait_timer') and self.wait_timer is not None:
-            self.wait_timer.cancel()
-        
-        # Create a timer that checks periodically (non-blocking)
-        self.wait_timer = self.create_timer(1.0, self._check_start_condition)
-    
-    def _check_start_condition(self):
-        """Timer callback to check if we should continue waiting"""
-        if self.state == 'running':
-            # Stop waiting, cancel timer
-            if hasattr(self, 'wait_timer') and self.wait_timer is not None:
-                self.wait_timer.cancel()
-                self.wait_timer = None
-            self.get_logger().info("Start condition met - component is now running!")
-        else:
-            # Still waiting
-            self.get_logger().debug(f"Still waiting for start command... State: {self.state}")
-    
-    def start_component(self):
-        """Start triggered by SystemManager. Need to change the state"""
-        self.get_logger().info(f"Starting component: {self.layer_cn_id}")
-        self.set_state('running')
-        
-        # Cancel wait timer if it exists
-        if hasattr(self, 'wait_timer') and self.wait_timer is not None:
-            self.wait_timer.cancel()
-            self.wait_timer = None
-            self.get_logger().info("Wait timer cancelled - component now running")
 
-    def pause_component(self):
-        """Pause the component (running -> ready)"""
-        self.get_logger().info(f"Pausing component: {self.layer_cn_id}")
-        self.set_state("ready")
-        self._wait_for_start_cmd()
+        """Block until state == 'running'."""
+        with self._state_cond:
+            while self.state != "running":
+                self.get_logger().warn(f"current state for node {self.layer_cn_id}: {self.state}")
+                self._state_cond.wait()
+
 
     # ------------------------------------------------------------------
     # Error handling methods

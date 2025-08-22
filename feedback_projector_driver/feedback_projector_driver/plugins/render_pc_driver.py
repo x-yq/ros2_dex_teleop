@@ -34,7 +34,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         self.projection_interval = 1.0  # seconds
         self.last_projection_time = self.get_clock().now()
         self._initialize_node()
-        self._wait_for_start_cmd()
+        # self._wait_for_start_cmd()
 
     def _initialize_node(self):
         """Override the base initialization for RenderPC specific setup"""
@@ -136,16 +136,22 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
 
     def scene_image_callback(self, msg: SceneImage):
         """Callback for processed scene image data"""
+        if self.state!='running':
+            return        
         self.latest_scene_image = msg
         self.get_logger().debug(f"Received scene image from {msg.image_source}")
 
     def robot_state_callback(self, msg: RobotState):
         """Callback for robot state data"""
+        if self.state!='running':
+            return        
         self.latest_robot_state = msg
         self.get_logger().debug(f"Received robot state for {msg.robot_id}")
 
     def hand_plot_callback(self, msg: Hand2DPlotData):
         """Callback for hand 2D plot data"""
+        if self.state!='running':
+            return        
         self.latest_hand_plot_data = msg
         self.get_logger().debug(f"Received hand plot data for {msg.hand_id}")
 
@@ -171,6 +177,9 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
 
     def periodic_projection(self):
         """Periodically project dummy data for testing"""
+        if self.state != "running":
+            return 
+            
         current_time = self.get_clock().now()
         if (current_time - self.last_projection_time).nanoseconds / 1e9 >= self.projection_interval:
             

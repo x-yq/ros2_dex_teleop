@@ -45,7 +45,7 @@ class RealsenseDriver(SensorDriverBase):
         
         # Load plugin parameters
         self._initialize_node()
-        self._wait_for_start_cmd()
+        # self._wait_for_start_cmd()
         
         # Start streaming timer
         self._start_streaming()
@@ -359,6 +359,10 @@ class RealsenseDriver(SensorDriverBase):
             return
             
         try:
+
+            if self.state!='running':
+                return  
+
             # Get data from RealSense cameras
             sensor_data = self.get_data_from_sensor('realsense')
             
