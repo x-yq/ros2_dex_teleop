@@ -21,7 +21,6 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         
         # Additional attributes for this specific processor
         self.processing_frequency = 90  # Hz
-        self.is_processing_active = True
         self.processing_counter = 0
 
         self.left_hand_joint_names = ["leftHand",
@@ -38,30 +37,10 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                                       'rightRingProximal', 'rightRingMedial', 'rightRingDistal', 'rightRingTip',
                                       'rightLittleProximal', 'rightLittleMedial', 'rightLittleDistal', 'rightLittleTip']
         
-        
-        # Initialize processing parameters
-        self._initialize_node()
-        # self._wait_for_start_cmd()
+        self._load_my_config()
 
-    def _initialize_node(self):
-        """Override the base initialization for Rococo specific setup"""
-        self.get_logger().info(f"Initializing RococoHandKeypointProcessor: {self.layer_cn_id}")
 
-        # Load configurations
-        self._load_config()
-        
-        # Register publishers and subscribers
-        self.register_pub_sub()
-        
-        ## Start a timer for periodic dummy processing
-        # self.dummy_processing_timer = self.create_timer(1.0/self.processing_frequency, self.dummy_processing_callback)
-        
-        if self.check_plugins():
-            self.set_state("ready")
-            
-        self.get_logger().info("RococoHandKeypointProcessor initialized successfully")
-
-    def _load_config(self):
+    def _load_my_config(self):
         """Load processor-specific configuration using component_node config methods"""
         try:
             # Load this component's specific configuration
@@ -75,11 +54,6 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                         self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
                         self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
                         break
-            
-            # Load data stream configuration
-            self.data_stream_config = self.load_data_stream_config()
-            if not self.data_stream_config:
-                self.get_logger().warn("Failed to load data stream configuration")
                 
         except Exception as e:
             self.handle_error(f"Failed to load processor config: ", e)
@@ -134,14 +108,13 @@ class RococoHandKeypointProcessor(DataProcessorBase):
     def raw_data_callback(self, msg: RawHandKeypoint):
         """Callback for raw hand keypoint data"""
 
-        if self.state!='running':
-            return  
+        ##NOTE
+        # if self.state!='running':
+        #     return  
 
         self.get_logger().debug(f"Received raw hand keypoint data with {len(msg.fingertips)} fingertips")
         
-        # Process the data immediately when received
-        if self.is_processing_active:
-            self.process_data(msg)
+        self.process_data(msg)
 
     def process_data(self, raw_data: RawHandKeypoint):
         """
@@ -369,57 +342,12 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                                     
         except Exception as e:
             self.handle_error("Error processing hand data: ", e)
-    
-    def check_plugins(self):
-        """Verify that required methods are implemented"""
-        required_methods = ['process_data', 'raw_data_callback', 'register_pub_sub']
-        
-        for method_name in required_methods:
-            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.handle_error(f"Required method '{method_name}' not implemented")
-                return False
-        
-        self.get_logger().info("All required plugins/methods are available")
-        return True
 
     def urgent_stop(self):
         """Emergency stop implementation"""
         self.get_logger().warn("URGENT STOP triggered for RococoHandKeypointProcessor")
-        self.is_processing_active = False
 
+        self.stop_component()
         self.set_state("disconnected")
         
-        # Stop the dummy processing timer
-        if hasattr(self, 'dummy_processing_timer'):
-            self.destroy_timer(self.dummy_processing_timer)
-        
         self.get_logger().info("RococoHandKeypointProcessor emergency stopped successfully")
-
-    def disable_processing(self):
-        """Disable data processing"""
-        self.is_processing_active = False
-        self.get_logger().info("Data processing disabled")
-
-    def enable_processing(self):
-        """Enable data processing"""
-        self.is_processing_active = True
-        self.get_logger().info("Data processing enabled")
-
-def main(args=None):
-    rclpy.init(args=args)
-    
-    # Create the node
-    processor = RococoHandKeypointProcessor(layer_cn_id="input_control_data_processor")
-    
-    try:
-        # Spin the node
-        rclpy.spin(processor)
-    except KeyboardInterrupt:
-        processor.get_logger().info("Keyboard interrupt received")
-    finally:
-        # Cleanup
-        processor.destroy_node()
-        rclpy.shutdown()
-
-if __name__ == "__main__":
-    main()

@@ -23,7 +23,6 @@ class MotionRetargetOT(MotionRetargetBase):
         
         # Additional attributes for this specific retargeter
         self.processing_frequency = 90  # Hz
-        self.is_retargeting_active = True
         self.retargeting_counter = 0
         
         # Robot-specific parameters
@@ -34,24 +33,10 @@ class MotionRetargetOT(MotionRetargetBase):
         ]
         
         # Initialize retargeting parameters
-        self._initialize_node()
-        # self._wait_for_start_cmd()
+        self._load_my_config()
 
-    def _initialize_node(self):
-        """Override the base initialization for MotionRetargetOT specific setup"""
-        self.get_logger().info(f"Initializing MotionRetargetOT: {self.layer_cn_id}")
 
-        self._load_config()
-        
-        # Register publishers and subscribers
-        self.register_pub_sub()
-        
-        if self.check_plugins():
-            self.set_state("ready")
-            
-        self.get_logger().info("MotionRetargetOT initialized successfully")
-
-    def _load_config(self):
+    def _load_my_config(self):
         """Load all required configurations using ComponentNode methods"""
         try:
             # Load component-specific configuration
@@ -64,30 +49,6 @@ class MotionRetargetOT(MotionRetargetBase):
                         self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
                         self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
                         break
-            
-            # Load calibration configuration
-            self.calibration_config = self.load_calibration_config()
-            if self.calibration_config:
-                self.get_logger().info("Loaded calibration config")
-            
-            # Load data stream configuration
-            self.data_stream_config = self.load_data_stream_config()
-            if self.data_stream_config:
-                self.get_logger().info("Loaded data stream config")
-                
-                # Extract topic information from data stream config
-                if 'topics' in self.data_stream_config:
-                    self.get_logger().info(f"Found {len(self.data_stream_config['topics'])} topics in data stream config")
-            
-            # # Load hardware configuration (optional)
-            # hardware_config = self.load_hardware_config(['robots'])
-            # if hardware_config and 'robots' in hardware_config:
-            #     robot_config = hardware_config['robots'].get('xarm5_robot', {})
-            #     if 'joint_names' in robot_config:
-            #         self.robot_joint_names = robot_config['joint_names']
-            #     if 'joint_limits' in robot_config:
-            #         self.robot_joint_limits = robot_config['joint_limits']
-            #     self.get_logger().info(f"Loaded hardware config for robot: {self.robot_joint_names}")
                 
         except Exception as e:
             self.handle_error(f"Failed to load configurations: {str(e)}")
@@ -166,14 +127,14 @@ class MotionRetargetOT(MotionRetargetBase):
             
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
-        if self.state!='running':
-            return  
+        ##NOTE
+        # if self.state!='running':
+        #     return  
 
         self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
         
         # Retarget the hand data to robot commands
-        if self.is_retargeting_active:
-            self.retarget_hand_data(msg)
+        self.retarget_hand_data(msg)
 
     def retarget_hand_data(self, hand_data: ProcessedHandKeypoint):
         """Retarget hand keypoints to robot joint angles"""
@@ -314,30 +275,9 @@ class MotionRetargetOT(MotionRetargetBase):
         result = mat.dot(t)
         return Point(x=result[0], y=result[1], z=result[2])
 
-    def check_plugins(self):
-        """Verify that required methods are implemented"""
-        required_methods = [
-            'retarget_control_to_robot_space',
-            'hand_keypoint_callback',
-            'register_pub_sub'
-        ]
-        
-        for method_name in required_methods:
-            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.handle_error(f"Required method '{method_name}' not implemented")
-                return False
-        
-        self.get_logger().info("All required plugins/methods are available")
-        return True
-
     def urgent_stop(self):
         """Emergency stop implementation"""
         self.get_logger().warn("URGENT STOP triggered for MotionRetargetOT")
-        self.is_retargeting_active = False
-        
-        # Stop the dummy retargeting timer
-        if hasattr(self, 'dummy_retargeting_timer'):
-            self.destroy_timer(self.dummy_retargeting_timer)
         
         # Send stop command to robot (all zeros)
         stop_msg = JointAngles()
@@ -350,16 +290,10 @@ class MotionRetargetOT(MotionRetargetBase):
         
         self.publish_cmd("joint_angles_cmd", stop_msg)
 
+        self.stop_component()
+
+
         self.set_state("disconnected")
         
         self.get_logger().info("MotionRetargetOT emergency stopped successfully")
 
-    def disable_transform(self):
-        """Disable motion retargeting"""
-        self.is_retargeting_active = False
-        self.get_logger().info("Motion retargeting disabled")
-
-    def enable_transform(self):
-        """Enable motion retargeting"""
-        self.is_retargeting_active = True
-        self.get_logger().info("Motion retargeting enabled")

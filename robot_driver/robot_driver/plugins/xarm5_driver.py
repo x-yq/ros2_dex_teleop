@@ -28,7 +28,6 @@ class XArm5Driver(RobotDriverBase):
         
         # Driver specific attributes
         self.freq = 90  # Default frequency
-        self.timer: Optional[Timer] = None
         self.robot_active = False
         self.robot_connected = False
 
@@ -50,19 +49,14 @@ class XArm5Driver(RobotDriverBase):
         self.last_command_time = None
         self.command_timeout = 5.0  # seconds
 
-        self._initialize_node()
-        # self._wait_for_start_cmd()
+        self._load_my_config()
 
-        # Start state publishing timer
-        self._start_state_publishing()
+        self._initialize_robot()
 
-    def _initialize_node(self):
-        self._load_config()
-        self.register_pub_sub()
-        if self.check_plugins():
-            self.set_state("ready")
+        # # Start state publishing timer
+        # self._start_state_publishing()
             
-    def _load_config(self):
+    def _load_my_config(self):
         """Load all required configurations using ComponentNode methods"""
         try:
             # Load component-specific configuration
@@ -81,24 +75,6 @@ class XArm5Driver(RobotDriverBase):
                             self.joint_limits = plugin_params['joint_limits']
                         self.get_logger().info(f"Loaded processor config: {self.freq}Hz")
                         break
-            
-            # Load hardware configuration
-            self.hardware_config = self.load_hardware_config()
-            if self.hardware_config:
-                self.get_logger().info("Loaded hardware config")
-                
-                # Extract robot configuration
-                if 'robots' in self.hardware_config:
-                    robot_configs = self.hardware_config['robots']
-                    for robot_config in robot_configs:
-                        if robot_config['hardware_id'] == 'xarm5_robot':
-                            self.robot_ip = robot_config['ip']
-                            self.get_logger().info(f"Loaded robot config: {self.robot_ip}")
-            
-            # Load data stream configuration
-            self.data_stream_config = self.load_data_stream_config()
-            if self.data_stream_config:
-                self.get_logger().info("Loaded data stream config")
                 
         except Exception as e:
             self.handle_error(f"Failed to load configurations: {str(e)}")
@@ -151,8 +127,10 @@ class XArm5Driver(RobotDriverBase):
     def cmd_sub_callback(self, msg: JointAngles, topic_id: str):
         """Callback for joint angle commands."""
         try:
-            if self.state!='running':
-                return  
+            ##NOTE
+            # if self.state!='running':
+            #     return  
+ 
 
             self.logging(f"Received joint angles command on {topic_id}", "DEBUG")
             
@@ -310,8 +288,10 @@ class XArm5Driver(RobotDriverBase):
             return
             
         try:
-            if self.state != 'running':
-                return 
+            ##NOTE
+            # if self.state!='running':
+            #     return  
+
                 
             # Get current robot state
             robot_state = self.get_state("xarm5_robot")
@@ -377,19 +357,19 @@ class XArm5Driver(RobotDriverBase):
         except Exception as e:
             self.handle_error(f"Error executing command for robot {robot_id}: {str(e)}")
 
-    def _start_state_publishing(self):
-        """Start the state publishing timer."""
-        if self.timer is not None:
-            self.timer.cancel()
-            
+    
+    def register_timer(self):
+        
+        if self._timers != []:
+            for t in self._timers:
+                t.cancel()
+
         # Calculate timer period from frequency
         timer_period = 1.0 / self.freq
-        self.timer = self.create_timer(timer_period, self.publish_robot_state)
-        
-        # Initialize robot
-        self._initialize_robot()
-        
-        self.logging(f"Started state publishing timer at {self.freq}Hz", "INFO")
+        timer = self.create_timer(timer_period, self.publish_robot_state)
+        self.logging(f"Registered a timer for state publishing at {self.freq}Hz", "INFO")
+        self._timers.append(timer)
+
 
     def _initialize_robot(self):
         """Initialize robot connection and state."""
@@ -410,41 +390,16 @@ class XArm5Driver(RobotDriverBase):
         except Exception as e:
             self.handle_error(f"Error initializing robot: {str(e)}")
 
-    def check_plugins(self) -> bool:
-        """Verify that this driver implements required interfaces."""
-        required_methods = ['get_state', 'cmd_sub_callback', 'home', 'execute_command']
-        
-        for method_name in required_methods:
-            if not hasattr(self, method_name):
-                self.handle_error(f"Missing required method: {method_name}")
-                return False
-                
-        self.logging("All required plugin methods implemented", "INFO")
-        return True
-
     def urgent_stop(self):
         """Emergency stop - stop robot motion immediately."""
         self.logging("Emergency stop triggered", "WARN")
         
-        # Cancel timer
-        if self.timer is not None:
-            self.timer.cancel()
-            self.timer = None
-            
         # Stop robot motion
         if self.robot_active:
             self.execute_command("xarm5_robot", {"type": "stop", "urgent": True})
             self.robot_active = False
 
+        self.stop_component()
         self.set_state("disconnected")
             
         self.logging("Emergency stop completed", "WARN")
-
-    def wait(self):
-        """Wait for any pending operations to complete."""
-        if self.timer is not None and self.robot_active:
-            self.logging("Waiting for robot operations to complete", "DEBUG")
-
-
-if __name__ == "__main__":
-    main()

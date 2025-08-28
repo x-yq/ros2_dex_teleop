@@ -6,8 +6,6 @@ from rclpy.node import Node
 from typing import Dict, List, Any, Optional
 from builtin_interfaces.msg import Time
 import json
-import threading
-
 
 from system_interfaces.srv import Logging, GetConfig
 from system_interfaces.msg import ComponentStatus, SystemCommand
@@ -31,10 +29,9 @@ class ComponentNode(Node, ABC):
         self.logging_client = self.create_client(Logging, "logging")
         self.get_config_client = self.create_client(GetConfig, "get_config")
 
-        # Component communication topics
-        self._setup_component_communication()
+        self._timers = []
 
-        self._state_cond = threading.Condition()
+        self._setup_component_communication()
 
         # Ensure services are ready
         self._wait_for_services()
@@ -65,7 +62,6 @@ class ComponentNode(Node, ABC):
     def _system_command_callback(self, msg):
         """Handle commands from SystemManager"""
         try:
-            # with self._state_cond:
             command = msg.command.lower()
             
             if command == "get_status":
@@ -76,21 +72,18 @@ class ComponentNode(Node, ABC):
                 self.get_logger().warn(f"URGENT STOP command received from {msg.sender}")
                 self.urgent_stop()
                 self.set_state("disconnected")
-                # self._state_cond.notify_all()
                 self._publish_status()
 
             elif command == "start":
                 self.get_logger().warn(f"START command received from {msg.sender}")
                 self.set_state("running")
-                # self._state_cond.notify_all()
-                # self.start_component()
+                self.start_component()
                 self._publish_status()
 
             elif command == "pause":
                 self.get_logger().warn(f"PAUSE command received from {msg.sender}")
                 self.set_state("ready")
-                # self._state_cond.notify_all()
-                # self.pause_component()
+                self.pause_component()
                 self._publish_status()
                     
             else:
@@ -113,16 +106,17 @@ class ComponentNode(Node, ABC):
         except Exception as e:
             self.get_logger().error(f"Error publishing status: {e}")
 
+        
     # ------------------------------------------------------------------
-    # Service handling
+    # Componenet lifecycle control
     # ------------------------------------------------------------------
-
+    
     def _initialize_node(self):
-        """Initialize the node. Can be overwritten"""
         self.get_logger().info(f"Initializing: {self.layer_cn_id}")
         
         # Register publishers and subscribers
-        self.register_pub_sub()
+        self._load_root_configs() # definded in the child node
+        self.register_pub_sub() # definded in the bottom node
         
         # Verify plugins
         if self.check_plugins():
@@ -135,6 +129,29 @@ class ComponentNode(Node, ABC):
             self.get_logger().warn(f"{self.layer_cn_id} initialization failed")
             # Publish error status
             self._publish_status()
+
+    def start_component(self):
+        if self._timers == [] or not self._timers:
+            self.register_timer() #defined in the bottom node
+        else:
+            for timer in self._timers:
+                if timer.is_canceled():
+                    timer.reset()
+
+    def pause_component(self):
+        if self._timers and self._timers!=[]:
+            for timer in self._timers:
+                timer.cancel()
+
+    def stop_component(self):
+        if self._timers and self._timers!=[]:
+            for timer in self._timers:
+                timer.destroy()
+
+
+    # ------------------------------------------------------------------
+    # Service handling
+    # ------------------------------------------------------------------
 
     def _wait_for_services(self):
         """Block until SystemManager services are available."""
@@ -196,20 +213,6 @@ class ComponentNode(Node, ABC):
         """Get current component state"""
         return self.state
 
-    # ------------------------------------------------------------------
-    # Component lifecycle methods
-    # ------------------------------------------------------------------
-    
-
-    # If DataProcessorBase doesn't inherit from ComponentNode, you need these methods:
-    def _wait_for_start_cmd(self):
-
-        """Block until state == 'running'."""
-        with self._state_cond:
-            while self.state != "running":
-                self.get_logger().warn(f"current state for node {self.layer_cn_id}: {self.state}")
-                self._state_cond.wait()
-
 
     # ------------------------------------------------------------------
     # Error handling methods
@@ -227,17 +230,27 @@ class ComponentNode(Node, ABC):
         self.logging(error_log, "ERROR")
 
     # ------------------------------------------------------------------
-    # Abstract methods – enforce subclasses to define
+    # Abstract methods – enforce subclasses to define in plugin nodes
     # ------------------------------------------------------------------
 
     @abstractmethod
     def register_pub_sub(self):
         """Register publishers and subscribers (based on config)."""
         pass
+    
+    @abstractmethod
+    def register_timer(self):
+        """Register timer for publishers (based on config)."""
+        pass
 
     @abstractmethod
     def urgent_stop(self):
-        """Emergency stop triggered by SystemManager. Need to change the state"""
+        """Emergency stop triggered by SystemManager. Need to change the state, Need to call _stop_component()"""
+        pass
+
+    @abstractmethod
+    def _load_my_config(self):
+        """Load the component plugin configuration"""
         pass
 
     @abstractmethod
@@ -245,13 +258,6 @@ class ComponentNode(Node, ABC):
         """Verify that plugins implement required interfaces."""
         pass
 
-    # ------------------------------------------------------------------
-    # Optional utilities
-    # ------------------------------------------------------------------
-    
-    def __del__(self):
-        """Destructor - ensure cleanup"""
-        pass
 
     # ------------------------------------------------------------------
     # Config Loader Methods

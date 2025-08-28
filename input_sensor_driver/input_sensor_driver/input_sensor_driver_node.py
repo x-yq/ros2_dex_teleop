@@ -43,6 +43,6 @@ def main(cfg: DictConfig):
         else:
             print(f"Error creating node: {e}")
     finally:
-        # input_sensor_driver.urgent_stop()
+        input_sensor_driver.urgent_stop()
         input_sensor_driver.destroy_node()
         rclpy.shutdown()

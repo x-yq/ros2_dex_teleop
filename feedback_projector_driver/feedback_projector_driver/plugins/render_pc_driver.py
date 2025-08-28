@@ -23,7 +23,6 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         # Additional attributes for this specific driver
         self.width = 1280
         self.height = 720
-        self.is_projection_active = False
         
         # Store latest received data
         self.latest_scene_image = None
@@ -33,25 +32,10 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         # Dummy projection parameters
         self.projection_interval = 1.0  # seconds
         self.last_projection_time = self.get_clock().now()
-        self._initialize_node()
-        # self._wait_for_start_cmd()
 
-    def _initialize_node(self):
-        """Override the base initialization for RenderPC specific setup"""
-        self.get_logger().info(f"Initializing RenderPCDriver: {self.layer_cn_id}")
-        
-        # Register publishers and subscribers
-        self._load_configs()
-        self.register_pub_sub()
-        
-        # Start a timer for periodic dummy projection
-        self.projection_timer = self.create_timer(0.1, self.periodic_projection)
-        
-        if self.check_plugins():
-            self.set_state("ready")
-        self.get_logger().info("RenderPCDriver initialized successfully")
+        self._load_my_config()
 
-    def _load_configs(self):
+    def _load_my_config(self):
         """Load all required configurations using ComponentNode methods"""
         try:
             # Load component-specific configuration
@@ -59,18 +43,6 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
             if not self.my_config:
                 self.get_logger().warn(f"No component config found for {self.layer_cn_id}")
                 self.my_config = {}
-            
-            # Load data stream configuration
-            self.data_stream_config = self.load_data_stream_config()
-            if not self.data_stream_config:
-                self.get_logger().error("Failed to load data stream configuration")
-                self.data_stream_config = {}
-            
-            # Load hardware configuration for projector settings
-            self.hardware_config = self.load_hardware_config()
-            if not self.hardware_config:
-                self.get_logger().warn("No hardware config found")
-                self.hardware_config = {}
             
             # Override display parameters from component config if available
             if self.my_config and "plugins" in self.my_config:
@@ -136,22 +108,25 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
 
     def scene_image_callback(self, msg: SceneImage):
         """Callback for processed scene image data"""
-        if self.state!='running':
-            return        
+        ##NOTE
+        # if self.state!='running':
+        #     return        
         self.latest_scene_image = msg
         self.get_logger().debug(f"Received scene image from {msg.image_source}")
 
     def robot_state_callback(self, msg: RobotState):
         """Callback for robot state data"""
-        if self.state!='running':
-            return        
+        ##NOTE
+        # if self.state!='running':
+        #     return        
         self.latest_robot_state = msg
         self.get_logger().debug(f"Received robot state for {msg.robot_id}")
 
     def hand_plot_callback(self, msg: Hand2DPlotData):
         """Callback for hand 2D plot data"""
-        if self.state!='running':
-            return        
+        ##NOTE
+        # if self.state!='running':
+        #     return        
         self.latest_hand_plot_data = msg
         self.get_logger().debug(f"Received hand plot data for {msg.hand_id}")
 
@@ -177,8 +152,10 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
 
     def periodic_projection(self):
         """Periodically project dummy data for testing"""
-        if self.state != "running":
-            return 
+        
+        ##NOTE
+        # if self.state != "running":
+        #     return 
             
         current_time = self.get_clock().now()
         if (current_time - self.last_projection_time).nanoseconds / 1e9 >= self.projection_interval:
@@ -224,32 +201,16 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
             "timestamp": self.get_clock().now().to_msg().sec
         }
 
-    def check_plugins(self):
-        """Verify that required methods are implemented"""
-        required_methods = ['project_feedback', 'register_pub_sub']
-        
-        for method_name in required_methods:
-            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.handle_error(f"Required method '{method_name}' not implemented")
-                return False
-        
-        self.get_logger().info("All required plugins/methods are available")
-        return True
-
     def urgent_stop(self):
         """Emergency stop implementation"""
         self.get_logger().warn("URGENT STOP triggered for RenderPCDriver")
-        self.is_projection_active = False
-        
-        # Stop the projection timer
-        if hasattr(self, 'projection_timer'):
-            self.destroy_timer(self.projection_timer)
         
         # Clear all data
         self.latest_scene_image = None
         self.latest_robot_state = None
         self.latest_hand_plot_data = None
-
+        
+        self.stop_component()
         self.set_state("disconnected")
         
         self.get_logger().info("RenderPCDriver emergency stopped successfully")

@@ -25,7 +25,6 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         
         # Additional attributes for this specific processor
         self.processing_types = ["hand_2d_plot", "scene_img", "robot_state_plot"]
-        self.is_processing_active = True
         self.processing_counter = 0
         
         # Store latest received data
@@ -34,26 +33,10 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         self.latest_robot_state = None
         
         # # Initialize processing parameters
-        # self._load_processor_config()
+        self._load_my_config()
 
-        self._initialize_node()
 
-    def _initialize_node(self):
-        """Override the base initialization for MultiFeedback specific setup"""
-        self.get_logger().info(f"Initializing MultiFeedbackDataProcessor: {self.layer_cn_id}")
-        
-        # Register publishers and subscribers
-        self._load_configs()
-        self.register_pub_sub()
-        
-        # # Start a timer for periodic dummy processing
-        # self.dummy_processing_timer = self.create_timer(0.1, self.dummy_processing_callback)
-        
-        if self.check_plugins():
-            self.set_state("ready")
-        self.get_logger().info("MultiFeedbackDataProcessor initialized successfully")
-
-    def _load_configs(self):
+    def _load_my_config(self):
             """Load all required configurations using ComponentNode methods"""
             try:
                 # Load component-specific configuration
@@ -61,12 +44,6 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                 if not self.my_config:
                     self.get_logger().warn(f"No component config found for {self.layer_cn_id}")
                     self.my_config = {}
-                
-                # Load data stream configuration
-                self.data_stream_config = self.load_data_stream_config()
-                if not self.data_stream_config:
-                    self.get_logger().error("Failed to load data stream configuration")
-                    self.data_stream_config = {}
                 
                 # Override processing types from component config if available
                 if self.my_config and "plugins" in self.my_config:
@@ -161,36 +138,41 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
 
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
-        if self.state!='running':
-            return
+
+        ##NOTE
+        # if self.state!='running':
+        #     return
         self.latest_hand_keypoints = msg
         self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
         
         # Process hand data for 2D plotting
-        if self.is_processing_active and "hand_2d_plot" in self.processing_types:
+        if "hand_2d_plot" in self.processing_types:
             self.process_hand_data(msg)
 
     def scene_image_callback(self, msg: Image):
         """Callback for raw scene image data"""
-        if self.state!='running':
-            return
+        ##NOTE
+        # if self.state!='running':
+        #     return
         self.latest_scene_image = msg
         self.get_logger().debug("Received raw scene image")
         
         # Process scene image
-        if self.is_processing_active and "scene_img" in self.processing_types:
+        if "scene_img" in self.processing_types:
             self.process_scene_image(msg)
 
     def robot_state_callback(self, msg: RobotState):
         """Callback for robot state data"""
-        if self.state!='running':
-            return
+
+        ##NOTE
+        # if self.state!='running':
+        #     return
             
         self.latest_robot_state = msg
         self.get_logger().debug(f"Received robot state for {msg.robot_id}")
         
         # Process robot state for plotting
-        if self.is_processing_active and "robot_state_plot" in self.processing_types:
+        if "robot_state_plot" in self.processing_types:
             self.process_robot_state(msg)
 
     def process_hand_data(self, hand_data: ProcessedHandKeypoint):
@@ -328,44 +310,17 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         # Add some dummy processing (e.g., calculate velocity, etc.)
         return processed_msg
 
-    def check_plugins(self):
-        """Verify that required methods are implemented"""
-        required_methods = [
-            'register_pub_sub'
-        ]
-        
-        for method_name in required_methods:
-            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
-                self.handle_error(f"Required method '{method_name}' not implemented")
-                return False
-        
-        self.get_logger().info("All required plugins/methods are available")
-        return True
-
     def urgent_stop(self):
         """Emergency stop implementation"""
         self.get_logger().warn("URGENT STOP triggered for MultiFeedbackDataProcessor")
-        self.is_processing_active = False
-        
-        # Stop the dummy processing timer
-        if hasattr(self, 'dummy_processing_timer'):
-            self.destroy_timer(self.dummy_processing_timer)
         
         # Clear data
         self.latest_hand_keypoints = None
         self.latest_scene_image = None
         self.latest_robot_state = None
+        
+        self.stop_component()
 
         self.set_state("disconnected")
         
         self.get_logger().info("MultiFeedbackDataProcessor emergency stopped successfully")
-
-    def disable_processing(self):
-        """Disable data processing"""
-        self.is_processing_active = False
-        self.get_logger().info("Data processing disabled")
-
-    def enable_processing(self):
-        """Enable data processing"""
-        self.is_processing_active = True
-        self.get_logger().info("Data processing enabled")

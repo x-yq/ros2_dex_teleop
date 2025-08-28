@@ -13,6 +13,26 @@ class DockerMonitor(KPIMonitorBase):
         self.client = docker.from_env()
         self.kpi_metrics = []
         self.active_container_id = ''
+        self.container_ids = []
+
+    
+    def _load_my_config(self):
+        """Load monitor-specific configuration using component_node config methods"""
+        try:
+            # Load this component's specific configuration
+            self.my_config = self.load_my_config()
+            if self.my_config and "plugins" in self.my_config:
+                # Extract processing frequency from plugin parameters if available
+                plugins = self.my_config["plugins"]
+                for plugin in plugins:
+                    if 'docker_monitor' in plugin.get('id'):
+                        plugin_params = plugin.get('params', {})
+                        self.container_ids = plugin_params.get("container_ids", [])
+                        self.get_logger().info(f"Loaded docker monitor config: {self.container_ids}")
+                        break
+                
+        except Exception as e:
+            self.handle_error(f"Failed to load docker monitor config: ", e)
 
     def start_monitor_srv_callback(self, request, response):
         self.active_container_id = request.container_id
@@ -28,7 +48,8 @@ class DockerMonitor(KPIMonitorBase):
     def stop_monitor_srv_callback(self, request, response):
         self.log_kpi(self.kpi_metrics)
         if self.monitor_timer:
-            self.destroy_timer(self.monitor_timer)
+            self.monitor_timer.destroy()
+            # self.destroy_timer(self.monitor_timer)
             self.monitor_timer = None
         response.success = True
         response.container_id = self.active_container_id
@@ -45,7 +66,11 @@ class DockerMonitor(KPIMonitorBase):
         pass
 
     def urgent_stop(self):
+        self.stop_component()
         self.set_state("disconnected")
 
     def check_plugins(self):
         self.set_state("ready")
+
+    def register_timer(self):
+        pass

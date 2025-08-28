@@ -28,75 +28,25 @@ class RobotDriverBase(ComponentNode, ABC):
         self.my_config: Dict[str, Any] = {}
         self.hardware_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
-        
-    def _initialize_node(self):
-        """Initialize the driver node."""
-        self.get_logger().info(f"Initializing RobotDriverBase: {self.layer_cn_id}")
-        
-        # # Load projector configurations
-        # self._load_robot_config()
-        
-        # Register publishers and subscribers
-        self.register_pub_sub()
-        
-        # Verify plugins
-        if self.check_plugins():
-            self.set_state("ready")
-            self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
-        else:
-            self.get_logger().warn(f"{self.layer_cn_id} unsuccessful")
 
-        self.get_logger().info("RobotDriverBase initialized successfully")
-
-    # def _load_robot_config(self):
-    #     """Load robot configuration from hardware config files."""
-    #     try:
-    #         config_data = self.get_config("hardware.yaml")
-    #         if config_data:
-    #             # Handle both YAML and JSON formats
-    #             if config_data.strip().startswith('{'):
-    #                 hardware_config = json.loads(config_data)
-    #             else:
-    #                 hardware_config = yaml.safe_load(config_data)
-                
-    #             # Convert list format to dictionary for easier access
-    #             hardware_list = hardware_config.get('hardware', [])
-    #             self.robot_config = {}
-                
-    #             for hw_item in hardware_list:
-    #                 if isinstance(hw_item, dict) and 'hardware_id' in hw_item:
-    #                     hardware_id = hw_item['hardware_id']
-    #                     # Create robot config entry with IP and access info
-    #                     robot_info = {
-    #                         'ip': hw_item.get('ip', ''),
-    #                         'access_port': hw_item.get('access_port', 22),
-    #                         'description': f"Robot on {hardware_id}",
-    #                         'execution_platform': hw_item.get('execution_plattform', False)
-    #                     }
-                        
-    #                     # Add SSH info if available
-    #                     if 'ssh' in hw_item:
-    #                         robot_info.update(hw_item['ssh'])
-                            
-    #                     self.robot_config[hardware_id] = robot_info
-                
-    #             self.logging(f"Loaded robot config for hardware: {list(self.robot_config.keys())}", "INFO")
-    #             self.logging(f"Running in {'simulated' if self.simulated else 'physical'} mode", "INFO")
-    #         else:
-    #             self.logging("Failed to load robot configuration", "ERROR")
-    #     except Exception as e:
-    #         self.logging(f"Error loading robot config: {str(e)}", "ERROR")
-    #         self.robot_config = {}
-    
-    # def get_robot_ip_port(self, robot_id: str) -> Optional[tuple]:
-    #     """Get robot IP and port by robot ID."""
-    #     if robot_id in self.robot_config:
-    #         robot_info = self.robot_config[robot_id]
-    #         ip = robot_info.get('ip')
-    #         port = robot_info.get('access_port')
-    #         if ip and port:
-    #             return (ip, port)
-    #     return None
+        self.robot_config: Dict[str, Any] = {}
+        
+        self._initialize_node() # definded in the ComponentNode
+        
+    def _load_root_configs(self):
+        # Load hardware configuration
+        self.hardware_config = self.load_hardware_config()
+        if self.hardware_config:
+            self.get_logger().info("Loaded hardware config")
+            
+            # Extract robot configuration
+            if 'robots' in self.hardware_config:
+                self.robot_config = self.hardware_config['robots']
+        
+        # Load data stream configuration
+        self.data_stream_config = self.load_data_stream_config()
+        if self.data_stream_config:
+            self.get_logger().info("Loaded data stream config")
 
     @abstractmethod
     def get_state(self, robot_id: str) -> Any:
@@ -153,24 +103,27 @@ class RobotDriverBase(ComponentNode, ABC):
         """Register publishers and subscribers based on configuration."""
         # This will be implemented by subclasses based on their specific needs
         self.logging("Base register_pub_sub called - should be overridden", "WARN")
+    
+    def register_timer(self):
+        """Register timers based on configuration."""
+        self.logging("Base register_timer called - should be overridden", "WARN")
 
     def urgent_stop(self):
-        """Emergency stop all robots."""
-        self.logging("Emergency stop triggered - stopping all robots", "WARN")
-        for robot_id in self.robot_config.keys():
-            try:
-                # Try to send stop command to each robot
-                self.execute_command(robot_id, {"type": "stop", "urgent": True})
-                self.logging(f"Emergency stop sent to robot: {robot_id}", "INFO")
-            except Exception as e:
-                self.logging(f"Error stopping robot {robot_id}: {str(e)}", "ERROR")
+        """Emergency stop motion retarget processing."""
+        self.logging("Emergency stop triggered - should be overridden", "WARN")
+
+    def _load_my_config(self):
+        self.logging("Base _load_my_config called - should be overridden", "WARN")
 
     def check_plugins(self):
         """Verify that plugins implement required interfaces."""
-        required_methods = ['get_state', 'cmd_sub_callback', 'home', 'execute_command']
-        for plugin_name, plugin in self.plugins.items():
-            for method_name in required_methods:
-                if not hasattr(plugin, method_name):
-                    self.logging(f"Plugin {plugin_name} missing method: {method_name}", "ERROR")
-                    return False
+        self.get_logger().debug(f"Checking plugins for {self.layer_cn_id}")
+        
+        # Check if concrete implementation provides required projection capabilities
+        required_methods = ['register_pub_sub', 'register_timer', 'urgent_stop', '_load_my_config']
+        
+        for method_name in required_methods:
+            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
+                self.get_logger().warn(f"Required method '{method_name}' not properly implemented")
+                return False
         return True

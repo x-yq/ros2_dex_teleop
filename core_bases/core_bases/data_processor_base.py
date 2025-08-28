@@ -24,6 +24,16 @@ class DataProcessorBase(ComponentNode, ABC):
         
         self.my_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
+
+        self._initialize_node() # definded in the ComponentNode
+
+    def _load_root_configs(self):
+                        
+        # Load data stream configuration
+        self.data_stream_config = self.load_data_stream_config()
+        if not self.data_stream_config:
+            self.get_logger().error("Failed to load data stream configuration")
+            self.data_stream_config = {}
         
 
     def publish_processed_data(self, topic_id: str, msg: Any):
@@ -34,6 +44,7 @@ class DataProcessorBase(ComponentNode, ABC):
             topic_id: Topic identifier for publishing
             msg: Processed message to publish
         """
+
         if topic_id in self.processed_data_publishers:
             try:
                 publisher = self.processed_data_publishers[topic_id]
@@ -48,18 +59,28 @@ class DataProcessorBase(ComponentNode, ABC):
         """Register publishers and subscribers based on configuration."""
         # This will be implemented by subclasses based on their specific needs
         self.logging("Base register_pub_sub called - should be overridden", "WARN")
+    
+    def register_timer(self):
+        """Register timers based on configuration."""
+        self.logging("Base register_timer called - should be overridden", "WARN")
 
     def urgent_stop(self):
         """Emergency stop data processing."""
-        self.logging("Emergency stop triggered - disabling data processing", "WARN")
-        self.disable_processing()
-
+        self.logging("Base urgent_stop called - should be overridden", "WARN")
+    
+    def _load_my_config(self):
+        """Load the component plugin configuration"""
+        self.logging("Base _load_my_config called - should be overridden", "WARN")
+    
     def check_plugins(self):
         """Verify that plugins implement required interfaces."""
-        required_methods = ['raw_data_sub_callback', 'process_data']
-        for plugin_name, plugin in self.plugins.items():
-            for method_name in required_methods:
-                if not hasattr(plugin, method_name):
-                    self.logging(f"Plugin {plugin_name} missing method: {method_name}", "ERROR")
-                    return False
+        self.get_logger().debug(f"Checking plugins for {self.layer_cn_id}")
+        
+        # Check if concrete implementation provides required projection capabilities
+        required_methods = ['register_pub_sub', 'register_timer', 'urgent_stop', '_load_my_config']
+        
+        for method_name in required_methods:
+            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
+                self.get_logger().warn(f"Required method '{method_name}' not properly implemented")
+                return False
         return True

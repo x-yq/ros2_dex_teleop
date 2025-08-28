@@ -22,30 +22,18 @@ class RococoDriver(SensorDriverBase):
         
         # Driver specific attributes
         self.freq = 60  # Default frequency
-        self.timer: Optional[Timer] = None
         self.sensor_active = False
         self.rococo_connection_status = False
-        self.data_publishers = {}
+
+        self._load_my_config()
+
+        self.start_sensor('rococo')
         
-        self._initialize_node()
-        # Start streaming timer
-        self._start_streaming()
-
-    def _initialize_node(self):
-        """Initialize Rococo driver node."""
-        self._load_config()
+        # # Start streaming timer
+        # self._start_streaming()
 
 
-        # Register publishers and subscribers
-        self.register_pub_sub()
-
-
-        # Verify plugins
-        if self.check_plugins():
-            self.set_state("ready")
-
-
-    def _load_config(self):
+    def _load_my_config(self):
         """Load driver-specific configuration using component_node config methods"""
         try:
             # Load this component's specific configuration
@@ -59,10 +47,6 @@ class RococoDriver(SensorDriverBase):
                         self.get_logger().info(f"Loaded RococoDriver config: {self.freq}Hz")
                         break
 
-            # Load data stream configuration
-            self.data_stream_config = self.load_data_stream_config()
-            if not self.data_stream_config:
-                self.get_logger().warn("Failed to load data stream configuration")
         except Exception as e:
             self.handle_error("Failed to load RococoDriver config: ", e)
 
@@ -80,11 +64,11 @@ class RococoDriver(SensorDriverBase):
                 msg_type = stream.get("msg_type")
                 publisher = stream.get("publisher")
 
-                if publisher != self.layer_cn_id:
-                    continue
+                # if publisher != self.layer_cn_id:
+                #     continue
 
-                if not topic_name or not msg_type:
-                    continue
+                # if not topic_name or not msg_type:
+                #     continue
 
                 if msg_type == "component_interfaces/msg/RawHandKeypoint":
                     self.data_publishers[topic_name] = self.create_publisher(
@@ -325,69 +309,50 @@ class RococoDriver(SensorDriverBase):
             return
 
         try:
-            # self._wait_for_start_cmd()
-            if self.state!='running':
-                return
+            ##NOTE
+            # if self.state!='running':
+            #     return  
+
             
             # Get data from rococo sensor
             hand_data = self.get_data_from_sensor('rococo')
             
             if hand_data is not None:
                 # Create and publish RawHandKeypoint message
-                if 'right_hand_keypoint_raw' in self.data_publishers:
-                    msg = self._create_raw_hand_keypoint_msg(hand_data)
-                    self.publish_data('right_hand_keypoint_raw', msg)
-                    
-                    self.logging("Published right hand keypoint data", "DEBUG")
-                else:
-                    self.logging("No publisher found for right_hand_keypoint_raw", "WARN")
+                # if 'right_hand_keypoint_raw' in self.data_publishers:
+                msg = self._create_raw_hand_keypoint_msg(hand_data)
+                self.publish_data('right_hand_keypoint_raw', msg)
+                
+                self.logging("Published right hand keypoint data", "DEBUG")
+                # else:
+                #     self.logging("No publisher found for right_hand_keypoint_raw", "WARN")
             else:
                 self.logging("No data received from rococo sensor", "DEBUG")
                 
         except Exception as e:
             self.handle_error(f"Error in stream: ", e)
 
-    def _start_streaming(self):
-        if self.timer is not None:
-            self.timer.cancel()
+    def register_timer(self):
+        if self._timers != []:
+            for t in self._timers:
+                t.cancel()
 
-        # Only start timer if sensor starts successfully
-        if self.start_sensor('rococo'):
-            timer_period = 1.0 / self.freq
-            self.timer = self.create_timer(timer_period, self.stream)
-            self.logging(f"Started streaming timer at {self.freq}Hz", "INFO")
-        else:
-            self.logging("Failed to start sensor - streaming not started", "ERROR")
-
-    def check_plugins(self) -> bool:
-        """Verify that this driver implements required interfaces."""
-        required_methods = ['start_sensor', 'stop_sensor', 'get_data_from_sensor', 'stream']
-        
-        for method_name in required_methods:
-            if not hasattr(self, method_name):
-                self.handle_error(f"Missing required method: {method_name}")
-                return False
-                
-        self.logging("All required plugin methods implemented", "INFO")
-        return True
+        # Calculate timer period from frequency
+        timer_period = 1.0 / self.freq
+        timer = self.create_timer(timer_period, self.stream)
+        self.logging(f"Registered timer at {self.freq}Hz", "INFO")
+        self._timers.append(timer)
 
     def urgent_stop(self):
         """Emergency stop - stop streaming and sensor."""
         self.logging("Emergency stop triggered", "WARN")
         
-        # Cancel timer
-        if self.timer is not None:
-            self.timer.cancel()
-            self.timer = None
-            
+        # stop the timer
+        self.stop_component()
+
         # Stop sensor
         self.stop_sensor('rococo')
         self.set_state("disconnected")
         
         self.logging("Emergency stop completed", "WARN")
-
-    def wait(self):
-        """Wait for any pending operations to complete."""
-        if self.timer is not None and self.sensor_active:
-            self.logging("Waiting for streaming operations to complete", "DEBUG")
         

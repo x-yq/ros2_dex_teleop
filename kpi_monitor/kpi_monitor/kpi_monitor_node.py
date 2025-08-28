@@ -37,7 +37,7 @@ def main(cfg: DictConfig):
     except KeyboardInterrupt:
         pass
     finally:
-        node.destroy_node()
+        monitor.destroy_node()
         rclpy.shutdown()
 
 

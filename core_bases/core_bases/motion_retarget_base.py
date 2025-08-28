@@ -29,6 +29,20 @@ class MotionRetargetBase(ComponentNode, ABC):
         self.calibration_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
 
+        self._initialize_node() # definded in the ComponentNode
+
+    def _load_root_configs(self):
+        
+        # Load calibration configuration
+        self.calibration_config = self.load_calibration_config()
+        if self.calibration_config:
+            self.get_logger().info("Loaded calibration config")
+        
+        # Load data stream configuration
+        self.data_stream_config = self.load_data_stream_config()
+        if self.data_stream_config:
+            self.get_logger().info("Loaded data stream config")
+            
 
     def publish_cmd(self, topic_id: str, msg: Any):
         """
@@ -73,20 +87,26 @@ class MotionRetargetBase(ComponentNode, ABC):
         # This will be implemented by subclasses based on their specific needs
         self.logging("Base register_pub_sub called - should be overridden", "WARN")
 
-    def urgent_stop(self):
-        """Emergency stop motion transform processing."""
-        self.logging("Emergency stop triggered - disabling motion transform", "WARN")
-        self.disable_transform()
+    def register_timer(self):
+        """Register timers based on configuration."""
+        self.logging("Base register_timer called - should be overridden", "WARN")
 
+    def urgent_stop(self):
+        """Emergency stop motion retarget processing."""
+        self.logging("Emergency stop triggered - disabling motion retarget", "WARN")
+    
+    def _load_my_config(self):
+        self.logging("Base _load_my_config called - should be overridden", "WARN")
+    
     def check_plugins(self):
         """Verify that plugins implement required interfaces."""
-        required_methods = [
-            'control_data_sub_callback', 
-            'retarget_control_to_robot_space',
-        ]
-        for plugin_name, plugin in self.plugins.items():
-            for method_name in required_methods:
-                if not hasattr(plugin, method_name):
-                    self.logging(f"Plugin {plugin_name} missing method: {method_name}", "ERROR")
-                    return False
+        self.get_logger().debug(f"Checking plugins for {self.layer_cn_id}")
+        
+        # Check if concrete implementation provides required projection capabilities
+        required_methods = ['register_pub_sub', 'register_timer', 'urgent_stop', '_load_my_config']
+        
+        for method_name in required_methods:
+            if not hasattr(self, method_name) or not callable(getattr(self, method_name)):
+                self.get_logger().warn(f"Required method '{method_name}' not properly implemented")
+                return False
         return True
