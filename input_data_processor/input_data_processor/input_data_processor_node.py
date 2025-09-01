@@ -4,6 +4,7 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.mocap_data_processor import RococoHandKeypointProcessor
+from rclpy.executors import MultiThreadedExecutor
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="input_control_data_processor")
 def main(cfg: DictConfig):
@@ -27,7 +28,10 @@ def main(cfg: DictConfig):
         input_data_processor.logging("RococoHandKeypointProcessor node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(input_data_processor)
+        # rclpy.spin(input_data_processor)
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(input_data_processor)
+        executor.spin()
         
     except KeyboardInterrupt:
         if 'input_data_processor' in locals():

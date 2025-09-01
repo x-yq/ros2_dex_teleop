@@ -3,6 +3,7 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.render_pc_driver import RenderPCDriver
+from rclpy.executors import MultiThreadedExecutor
 
 
 @hydra.main(version_base='1.2', config_path="/root/dev_ws/src/config_files/component_node", config_name="feedback_projector_driver")
@@ -33,7 +34,12 @@ def main(cfg: DictConfig):
         feedback_projector_driver.logging("RenderPCProjecterDriver node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(feedback_projector_driver)
+        # rclpy.spin(feedback_projector_driver)
+                
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(feedback_projector_driver)
+        executor.spin()
+        
         
     except KeyboardInterrupt:
         if 'feedback_projector_driver' in locals():

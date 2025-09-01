@@ -4,6 +4,8 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.multi_feedback_data_processor import MultiFeedbackDataProcessor
+from rclpy.executors import MultiThreadedExecutor
+
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="feedback_data_processor")
 def main(cfg: DictConfig):
@@ -27,7 +29,11 @@ def main(cfg: DictConfig):
         feedback_data_processor.logging("MultiFeedbackDataProcessor node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(feedback_data_processor)
+        # rclpy.spin(feedback_data_processor)
+        
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(feedback_data_processor)
+        executor.spin()
         
     except KeyboardInterrupt:
         if 'feedback_data_processor' in locals():

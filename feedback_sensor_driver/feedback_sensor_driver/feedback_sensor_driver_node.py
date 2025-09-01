@@ -32,7 +32,11 @@ def main(cfg: DictConfig):
         feedback_sensor_driver.logging("RealsenseDriver node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(feedback_sensor_driver)
+        # rclpy.spin(feedback_sensor_driver)
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(feedback_sensor_driver)
+        executor.spin()
+        
         
     except KeyboardInterrupt:
         if 'feedback_sensor_driver' in locals():

@@ -3,6 +3,7 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.xarm5_driver import XArm5Driver
+from rclpy.executors import MultiThreadedExecutor
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="robot_driver")
 def main(cfg: DictConfig):
@@ -31,7 +32,10 @@ def main(cfg: DictConfig):
         robot_driver.logging("XArm5Driver node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(robot_driver)
+        # rclpy.spin(robot_driver)
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(robot_driver)
+        executor.spin()
         
     except KeyboardInterrupt:
         if 'robot_driver' in locals():

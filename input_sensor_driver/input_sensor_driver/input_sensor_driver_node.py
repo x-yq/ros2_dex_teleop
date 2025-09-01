@@ -4,6 +4,7 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.mocap import RococoDriver
+from rclpy.executors import MultiThreadedExecutor
 
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="input_sensor_driver_rococo")
@@ -32,7 +33,10 @@ def main(cfg: DictConfig):
         input_sensor_driver.logging("RococoDriver node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(input_sensor_driver)
+        # rclpy.spin(input_sensor_driver)
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(input_sensor_driver)
+        executor.spin()
         
     except KeyboardInterrupt:
         if 'input_sensor_driver' in locals():

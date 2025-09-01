@@ -5,6 +5,7 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.docker_monitor import DockerMonitor
+from rclpy.executors import MultiThreadedExecutor
 
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="monitor_0")
@@ -32,7 +33,10 @@ def main(cfg: DictConfig):
             ros2_domain_id=cfg.get("ros2_domain_id", None),
         )
 
-        rclpy.spin(monitor)
+        # rclpy.spin(monitor)
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(monitor)
+        executor.spin()
 
     except KeyboardInterrupt:
         pass

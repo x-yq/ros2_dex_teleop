@@ -21,7 +21,7 @@ class RococoDriver(SensorDriverBase):
         super().__init__(layer_cn_id, ros2_domain_id)
         
         # Driver specific attributes
-        self.freq = 60  # Default frequency
+        self.freq = 1  # Default frequency
         self.sensor_active = False
         self.rococo_connection_status = False
 

@@ -1,0 +1,15 @@
+# ComponentService.srv
+# This file should be placed in your ROS2 package's srv/ directory
+
+# Request
+string command        # Command to execute (start, pause, urgent_stop, get_status)
+builtin_interfaces/Time timestamp   # Timestamp of the request
+string sender         # Who sent the command (e.g., "system_manager")
+
+---
+
+# Response
+string status         # Current status of the component
+string message        # Additional message or error description
+bool success          # Whether the command was executed successfully
+builtin_interfaces/Time timestamp   # Timestamp of the response

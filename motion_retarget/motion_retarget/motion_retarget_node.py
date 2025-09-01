@@ -4,6 +4,7 @@ from omegaconf import OmegaConf, DictConfig
 import rclpy
 from hydra.utils import instantiate
 from .plugins.motion_retarget_ot import MotionRetargetOT
+from rclpy.executors import MultiThreadedExecutor
 
 @hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="motion_retarget")
 def main(cfg: DictConfig):
@@ -27,7 +28,10 @@ def main(cfg: DictConfig):
         motion_retarget.logging("MultiFeedbackDataProcessor node started via Hydra", "INFO")
         
         # Spin the node
-        rclpy.spin(motion_retarget)
+        # rclpy.spin(motion_retarget)
+        executor = rclpy.executors.MultiThreadedExecutor()
+        executor.add_node(motion_retarget)
+        executor.spin()
         
     except KeyboardInterrupt:
         if 'motion_retarget' in locals():

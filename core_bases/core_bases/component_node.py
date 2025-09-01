@@ -6,8 +6,9 @@ from rclpy.node import Node
 from typing import Dict, List, Any, Optional
 from builtin_interfaces.msg import Time
 import json
+from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 
-from system_interfaces.srv import Logging, GetConfig
+from system_interfaces.srv import Logging, GetConfig, ComponentService
 from system_interfaces.msg import ComponentStatus, SystemCommand
 import time
 
@@ -25,9 +26,13 @@ class ComponentNode(Node, ABC):
         self.state = "disconnected"
         self.valid_states = ["disconnected", "ready", "running"]
 
+        self.compo_client_callback_group = ReentrantCallbackGroup()
+        self.compo_srv_callback_group = ReentrantCallbackGroup()
+
         # Clients to SystemManager
-        self.logging_client = self.create_client(Logging, "logging")
-        self.get_config_client = self.create_client(GetConfig, "get_config")
+        self.logging_client = self.create_client(Logging, "logging", callback_group=self.compo_client_callback_group)
+        self.get_config_client = self.create_client(GetConfig, "get_config", callback_group= self.compo_client_callback_group)
+
 
         self._timers = []
 
@@ -40,57 +45,124 @@ class ComponentNode(Node, ABC):
     # Component Communication Setup
     # ------------------------------------------------------------------
     
+    # def _setup_component_communication(self):
+    #     """Setup component communication topics"""
+    #     # Subscribe to system channel for commands from SystemManager
+    #     self.system_channel_sub = self.create_subscription(
+    #         SystemCommand,
+    #         'system_channel',
+    #         self._system_command_callback,
+    #         10
+    #     )
+        
+    #     # Publisher for component status to SystemManager
+    #     self.component_channel_pub = self.create_publisher(
+    #         ComponentStatus,
+    #         'component_channel',
+    #         10
+    #     )
+        
+    #     self.get_logger().info(f"Component communication setup for {self.layer_cn_id}")
+    
     def _setup_component_communication(self):
-        """Setup component communication topics"""
-        # Subscribe to system channel for commands from SystemManager
-        self.system_channel_sub = self.create_subscription(
-            SystemCommand,
-            'system_channel',
-            self._system_command_callback,
-            10
+        """Setup component communication service"""
+        # Create service server for handling commands from SystemManager
+        service_name = f'cn_srv_{self.layer_cn_id}'
+        self.component_service = self.create_service(
+            ComponentService,
+            service_name,
+            self._component_service_callback,
+            callback_group = self.compo_srv_callback_group
         )
+        
+        self.get_logger().info(f"Component service '{service_name}' created for {self.layer_cn_id}")
+
         
         # Publisher for component status to SystemManager
         self.component_channel_pub = self.create_publisher(
             ComponentStatus,
-            'component_channel',
+            'component_states',
             10
         )
-        
-        self.get_logger().info(f"Component communication setup for {self.layer_cn_id}")
-    
-    def _system_command_callback(self, msg):
-        """Handle commands from SystemManager"""
+
+
+    def _component_service_callback(self, request, response):
+        """Handle service requests from SystemManager"""
         try:
-            command = msg.command.lower()
+            response = ComponentService.Response()
             
-            if command == "get_status":
-                self._publish_status()
-                self.get_logger().debug(f"Status requested by {msg.sender}")
+            command = request.command.lower()
+            
+            # self.get_logger().debug(f"Service request received: {command} from {request.sender}")
+
+            # self.logging(f"Service request received: {command} from {request.sender}", "DEBUG")
+
+            if command == "checkup":
+                # Return current status
+                response.status = self.state  # Assuming you have a state method
+                response.message = f"Status requested by {request.sender}"
+                response.success = True
+                self.get_logger().debug(f"Status requested by {request.sender}: {response.status}")
                 
             elif command == "urgent_stop":
-                self.get_logger().warn(f"URGENT STOP command received from {msg.sender}")
-                self.urgent_stop()
-                self.set_state("disconnected")
-                self._publish_status()
-
-            elif command == "start":
-                self.get_logger().warn(f"START command received from {msg.sender}")
-                self.set_state("running")
-                self.start_component()
-                self._publish_status()
-
-            elif command == "pause":
-                self.get_logger().warn(f"PAUSE command received from {msg.sender}")
-                self.set_state("ready")
-                self.pause_component()
-                self._publish_status()
-                    
-            else:
-                self.get_logger().warn(f"Unknown command received: {command}")
+                self.get_logger().warn(f"URGENT STOP command received from {request.sender}")
+                try:
+                    self.urgent_stop()
+                    self.set_state("disconnected")
+                    response.status = self.state
+                    response.message = "Urgent stop executed successfully"
+                    response.success = True
+                except Exception as e:
+                    response.status = "error"
+                    response.message = f"Failed to execute urgent stop: {e}"
+                    response.success = False
+                    self.get_logger().error(f"Error during urgent stop: {e}")
                 
+            elif command == "start":
+                self.get_logger().warn(f"START command received from {request.sender}")
+                try:
+                    self.set_state("running")
+                    self.start_component()
+                    response.status = "running"
+                    response.message = "Start command executed successfully"
+                    response.success = True
+                except Exception as e:
+                    response.status = "error"
+                    response.message = f"Failed to execute start: {e}"
+                    response.success = False
+                    self.get_logger().error(f"Error during start: {e}")
+                
+            elif command == "pause":
+                self.get_logger().warn(f"PAUSE command received from {request.sender}")
+                try:
+                    self.set_state("ready")
+                    self.pause_component()
+                    response.status = "ready"
+                    response.message = "Pause command executed successfully"
+                    response.success = True
+                except Exception as e:
+                    response.status = "error"
+                    response.message = f"Failed to execute pause: {e}"
+                    response.success = False
+                    self.get_logger().error(f"Error during pause: {e}")
+                
+            else:
+                response.status = self.state
+                response.message = f"Unknown command received: {command}"
+                response.success = False
+                self.get_logger().warn(f"Unknown command received: {command}")
+            
+            # Set response timestamp
+            response.timestamp = self.get_clock().now().to_msg()
+            
         except Exception as e:
-            self.get_logger().error(f"Error handling system command: {e}")
+            self.get_logger().error(f"Error handling service request: {e}")
+            response.status = "error"
+            response.message = f"Service error: {e}"
+            response.success = False
+            response.timestamp = self.get_clock().now().to_msg()
+        
+        return response
     
     def _publish_status(self):
         """Publish current component status"""
