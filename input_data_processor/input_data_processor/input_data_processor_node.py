@@ -1,49 +1,47 @@
-
-import hydra
-from omegaconf import OmegaConf, DictConfig
 import rclpy
-from hydra.utils import instantiate
 from .plugins.mocap_data_processor import RococoHandKeypointProcessor
 from rclpy.executors import MultiThreadedExecutor
+import sys
 
-@hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="input_control_data_processor")
-def main(cfg: DictConfig):
+def main(args=None):
+    rclpy.init(args=args)
 
-    # If user provides external config file
-    if "config_path" in cfg and cfg.config_path:
-        cfg = OmegaConf.load(cfg.config_path)
+    if args:
+        # Parse custom arguments
+        for i, arg in enumerate(args):
+            if arg == "--layer_cn_id" and i + 1 < len(args):
+                layer_cn_id = args[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(args):
+                ros2_domain_id = int(args[i + 1])
+    else:
+        # If no args provided, try to get from sys.argv
+        for i, arg in enumerate(sys.argv):
+            if arg == "--layer_cn_id" and i + 1 < len(sys.argv):
+                layer_cn_id = sys.argv[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
+                ros2_domain_id = int(sys.argv[i + 1])
 
-    rclpy.init()
+
+    # These parameters will be set via the launch file
+    node = RococoHandKeypointProcessor(
+        layer_cn_id=layer_cn_id,          # to be overridden by launch
+        ros2_domain_id=ros2_domain_id        # to be overridden by launch
+    )
 
     try:
-        # Pick default plugin from cfg.plugins
-        plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
+        node.logging(f"RococoHandKeypointProcessor node with layer_cn_id: {layer_cn_id}", "INFO")
 
-        # Instantiate the driver using Hydra
-        input_data_processor = RococoHandKeypointProcessor(
-            layer_cn_id=cfg.layer_cn_id,
-            ros2_domain_id=cfg.get("ros2_domain_id", None),
-        )
-
-        input_data_processor.logging("RococoHandKeypointProcessor node started via Hydra", "INFO")
-        
-        # Spin the node
-        # rclpy.spin(input_data_processor)
-        executor = rclpy.executors.MultiThreadedExecutor()
-        executor.add_node(input_data_processor)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
         executor.spin()
-        
+
     except KeyboardInterrupt:
-        if 'input_data_processor' in locals():
-            input_data_processor.logging("Keyboard interrupt received", "INFO")
+        node.logging("Keyboard interrupt received", "INFO")
     except Exception as e:
-        if 'input_data_processor' in locals():
-            input_data_processor.logging(f"Unexpected error: {str(e)}", "ERROR")
-        else:
-            print(f"Error creating node: {e}")
+        node.logging(f"Unexpected error: {str(e)}", "ERROR")
     finally:
-        input_data_processor.urgent_stop()
-        input_data_processor.destroy_node()
+        node.urgent_stop()
+        node.destroy_node()
         rclpy.shutdown()
 
 

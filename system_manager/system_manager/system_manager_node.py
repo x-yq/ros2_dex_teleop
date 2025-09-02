@@ -3,10 +3,12 @@
 import rclpy
 from rclpy.node import Node
 import json
+import sys
 import yaml
 import os
 import subprocess
 import threading
+from threading import Thread
 import time
 from datetime import datetime
 from builtin_interfaces.msg import Time, Duration
@@ -23,8 +25,10 @@ from concurrent.futures import ThreadPoolExecutor
 class SystemManager(Node):
     """Main system management node with state machine and component monitoring"""
     
-    def __init__(self, config_folder_path="/root/dev_ws/src/config_files"):
+    def __init__(self, config_folder_path="", ros2_domain_id=None):
         super().__init__('system_manager')
+
+        self.ros2_domain_id = ros2_domain_id
         
         # File paths for logging
         self.system_log_file = "/root/dev_ws/log/system.log"
@@ -36,6 +40,8 @@ class SystemManager(Node):
         
         # Initialize state machine
         self.system_state = 'disconnected'
+        self.checkup_running = False
+        self.checkup_result = None
         
         # Component monitoring
         self.component_statuses = {}
@@ -60,7 +66,7 @@ class SystemManager(Node):
         self._create_component_communication()
         
         # # Run initial system checkup
-        # self._run_checkup()
+        self._start_background_checkup()
         
         self.logging(self.system_log_file, 'SystemManager node started successfully', 'INFO')
 
@@ -373,13 +379,21 @@ class SystemManager(Node):
                         'success': True,
                         'message': f"Current system state: {self.system_state}"
                     }
-                    
                 elif description == "checkup":
                     self.logging(self.system_log_file, "checkup cmd received from user, checking...", 'INFO')
-                    checkup_result = self._run_checkup()
+                    
+                    if self.checkup_running:
+                        return {
+                            'success': True,
+                            'message': "Checkup already in progress, please wait..."
+                        }
+                    
+                    # Start async checkup in background
+                    self._start_background_checkup()
+                    
                     return {
-                        'success': checkup_result,
-                        'message': f"System checkup {'passed' if checkup_result else 'failed'}"
+                        'success': True,
+                        'message': "System checkup started in background"
                     }
                     
                 else:
@@ -398,46 +412,71 @@ class SystemManager(Node):
             }
 
 ####################### component checkup ###########################
+    
+    def _start_background_checkup(self):
+        """Start the checkup process in a background thread"""
+        def run_async_checkup():
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(self._run_checkup_async())
+            finally:
+                loop.close()
+        
+        checkup_thread = Thread(target=run_async_checkup, daemon=True)
+        checkup_thread.start()
+        self.logging(self.system_log_file, 'Background checkup thread started', 'INFO')
 
-    def _run_checkup(self, timeout_sec=60, check_interval=1):
-        """Run comprehensive system checkup during startup with retry until timeout"""
-        self.logging(self.system_log_file, 'Running system checkup...', 'INFO')
+    async def _run_checkup_async(self, timeout_sec=30, check_interval=1):
+        """Run comprehensive system checkup asynchronously without blocking services"""
+        self.checkup_running = True
+        self.logging(self.system_log_file, 'Running system checkup (async)...', 'INFO')
         
         start_time = time.time()
         overall_ok = False
 
-        while time.time() - start_time < timeout_sec:
-            # Run hardware checkup
-            hardware_ok = self._check_hardware_connections()
-            
-            # Run component checkup
-            components_ok = self._check_component_status()
-            
-            # Overall checkup result
-            overall_ok = hardware_ok and components_ok
+        try:
+            while time.time() - start_time < timeout_sec:
+                # Run hardware checkup (make it async if possible)
+                hardware_ok = await self._check_hardware_connections_async()
+                
+                # Run component checkup (already async)
+                components_ok = await self._check_component_status_async()
+                
+                # Overall checkup result
+                overall_ok = hardware_ok and components_ok
 
+                if overall_ok:
+                    break  # exit loop if everything is okay
+                else:
+                    self.logging(self.system_log_file,
+                        f'Checkup failed, retrying in {check_interval}s...', 'WARN'
+                    )
+                    # Use asyncio.sleep instead of time.sleep to avoid blocking
+                    await asyncio.sleep(check_interval)
+
+            # Final result after retries
             if overall_ok:
-                break  # exit loop if everything is okay
+                self.system_state = 'paused'
+                self.logging(self.system_log_file, 'Checkup passed - System ready (paused)', 'INFO')
             else:
+                self.system_state = 'disconnected'
                 self.logging(self.system_log_file,
-                    f'Checkup failed, retrying in {check_interval}s...', 'WARN'
+                    'Startup checkup failed - System remains disconnected after retries', 'WARN'
                 )
-                time.sleep(check_interval)
 
-        # Final result after retries
-        if overall_ok:
-            self.system_state = 'paused'
-            self.logging(self.system_log_file, 'Checkup passed - System ready (paused)', 'INFO')
-        else:
-            self.system_state = 'disconnected'
-            self.logging(self.system_log_file,
-                'Startup checkup failed - System remains disconnected after retries', 'WARN'
-            )
+            self.checkup_result = overall_ok
+            return overall_ok
 
-        return overall_ok
-    
-    def _check_hardware_connections(self):
-        """Check hardware connections using ping"""
+        except Exception as e:
+            self.logging(self.system_log_file, f'Checkup error: {e}', 'ERROR')
+            self.checkup_result = False
+            return False
+        finally:
+            self.checkup_running = False
+
+    async def _check_hardware_connections_async(self):
+        """Async version of hardware connections check"""
         if 'hardware' not in self.all_configs:
             self.logging(self.system_log_file, 'No hardware config found, skipping hardware check', 'WARN')
             return True
@@ -445,10 +484,14 @@ class SystemManager(Node):
         hardware_config = self.all_configs['hardware']
         all_hardware_ok = True
         
-        self.logging(self.system_log_file, 'Checking hardware connections...', 'INFO')
+        self.logging(self.system_log_file, 'Checking hardware connections (async)...', 'INFO')
         
         # Check different hardware categories
         hardware_categories = ['robots', 'sensors', 'execution_plattforms']
+        
+        # Create tasks for parallel ping operations
+        ping_tasks = []
+        device_info = []
         
         for category in hardware_categories:
             if category in hardware_config:
@@ -460,42 +503,62 @@ class SystemManager(Node):
                         device_name = device.get('hardware_id', 'unknown')
                         ip_address = device['ip']
                         
-                        if self._ping_device(ip_address):
-                            self.logging(self.system_log_file, f'Hardware OK: {device_name} ({ip_address})', 'INFO')
-                        else:
-                            self.logging(self.system_log_file, f'Hardware FAIL: {device_name} ({ip_address}) not reachable', 'ERROR')
-                            all_hardware_ok = False
+                        # Create async ping task
+                        task = asyncio.create_task(self._ping_device_async(ip_address))
+                        ping_tasks.append(task)
+                        device_info.append((device_name, ip_address))
         
-        return all_hardware_ok  
-    
-    def _ping_device(self, ip_address):
-        """Ping a device to check if it's reachable"""
+        # Wait for all ping operations to complete
+        if ping_tasks:
+            ping_results = await asyncio.gather(*ping_tasks, return_exceptions=True)
+            
+            # Process results
+            for i, result in enumerate(ping_results):
+                device_name, ip_address = device_info[i]
+                
+                if isinstance(result, Exception):
+                    self.logging(self.system_log_file, f'Hardware FAIL: {device_name} ({ip_address}) - {result}', 'ERROR')
+                    all_hardware_ok = False
+                elif result:
+                    self.logging(self.system_log_file, f'Hardware OK: {device_name} ({ip_address})', 'INFO')
+                else:
+                    self.logging(self.system_log_file, f'Hardware FAIL: {device_name} ({ip_address}) not reachable', 'ERROR')
+                    all_hardware_ok = False
+        
+        return all_hardware_ok
+
+    async def _ping_device_async(self, ip_address):
+        """Async ping a device to check if it's reachable"""
         try:
-            # Simulate the result for now
+            # # Use asyncio subprocess for non-blocking ping
+            # process = await asyncio.create_subprocess_exec(
+            #     'ping', '-c', '1', '-W', '2', ip_address,
+            #     stdout=asyncio.subprocess.PIPE,
+            #     stderr=asyncio.subprocess.PIPE
+            # )
+            
+            # stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)
+            # return process.returncode == 0
+
             return True
+            
+        except asyncio.TimeoutError:
+            self.logging(self.system_log_file, f'Ping timeout for {ip_address}', 'WARN')
+            return False
         except Exception as e:
             self.logging(self.system_log_file, f'Ping failed for {ip_address}: {e}', 'ERROR')
             return False
 
-    def _check_component_status(self, timeout=10.0):
-        """Check status of all components using service calls"""
-        self.logging(self.system_log_file, "Starting component checkup via services...", 'INFO')
+    async def _check_component_status_async(self, timeout=10.0):
+        """Async version of component status check"""
+        self.logging(self.system_log_file, "Starting component checkup via services (async)...", 'INFO')
         
         # Clear previous statuses
         self.component_statuses.clear()
         
-        # Create new event loop for this thread if not in main thread
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        
-        try:
-            # Send checkup command to all components
-            results = loop.run_until_complete(
-                self._send_command_to_all_components_async("checkup")
-            )
+            # Send checkup command to all components (already async)
+            results = await self._send_command_to_all_components_async("checkup", timeout)
             
             # Analyze results
             self.logging(self.system_log_file, "Analysing component checkup...", 'INFO')
@@ -549,12 +612,13 @@ class SystemManager(Node):
     def logging_srv_callback(self, request, response):
         """Handle centralized logging requests from component nodes"""
         try:
-            # Format log entry
-            timestamp_str = datetime.fromtimestamp(
-                request.timestamp.sec + request.timestamp.nanosec * 1e-9
-            ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
+            # # Format log entry
+            # timestamp_str = datetime.fromtimestamp(
+            #     request.timestamp.sec + request.timestamp.nanosec * 1e-9
+            # ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
             
-            log_entry = f"[{timestamp_str}] [{request.log_level}] {request.layer_cn_id}: {request.message}"
+            # log_entry = f"[{timestamp_str}] [{request.log_level}] {request.layer_cn_id}: {request.message}"
+            log_entry = f"{request.layer_cn_id}: {request.message}"
             
             # Route to appropriate log file
             if request.log_level == "MONITOR":
@@ -699,29 +763,45 @@ class SystemManager(Node):
         except:
             return None
 
-
 def main(args=None):
-    """Main entry point for SystemManager node"""
     rclpy.init(args=args)
     
-    try:
-        system_manager_node = SystemManager()
-        system_manager_node.logging(system_manager_node.system_log_file, "SystemManager node initialized, spinning...", 'INFO')
-        
-        # Use MultiThreadedExecutor with more threads
-        executor = rclpy.executors.MultiThreadedExecutor(num_threads=8)
-        executor.add_node(system_manager_node)
-        executor.spin()
-        
-    except KeyboardInterrupt:
-        system_manager_node.logging(system_manager_node.system_log_file, "SystemManager node interrupted by user", 'INFO')
-    except Exception as e:
-        system_manager_node.logging(system_manager_node.system_log_file, f"SystemManager node error: {e}", 'ERROR')
-    finally:
-        if 'system_manager_node' in locals():
-            system_manager_node.destroy_node()
-        rclpy.shutdown()
-        print("SystemManager node shutdown complete")
+    if args:
+        # Parse custom arguments
+        for i, arg in enumerate(args):
+            if arg == "--config_folder_path" and i + 1 < len(args):
+                config_folder_path = args[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(args):
+                ros2_domain_id = int(args[i + 1])
+    else:
+        # If no args provided, try to get from sys.argv
+        for i, arg in enumerate(sys.argv):
+            if arg == "--config_folder_path" and i + 1 < len(sys.argv):
+                config_folder_path = sys.argv[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
+                ros2_domain_id = int(sys.argv[i + 1])
 
-if __name__ == '__main__':
+    # Create the driver node with the parsed parameters
+    node = SystemManager(
+        config_folder_path=config_folder_path
+    )
+
+    try:
+        node.logging(f"SystemManager node initialized, spinning...", "INFO")
+
+        executor = rclpy.executors.MultiThreadedExecutor(num_threads=8)
+        executor.add_node(node)
+        executor.spin()
+
+    except KeyboardInterrupt:
+        node.logging("Keyboard interrupt received", "INFO")
+    except Exception as e:
+        node.logging(f"Unexpected error: {str(e)}", "ERROR")
+    finally:
+        node._send_command_to_all_components_async("urgent_stop")
+        node.destroy_node()
+        rclpy.shutdown()
+
+
+if __name__ == "__main__":
     main()

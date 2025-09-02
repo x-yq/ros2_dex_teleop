@@ -1,57 +1,48 @@
-import hydra
-from omegaconf import OmegaConf, DictConfig
 import rclpy
-from hydra.utils import instantiate
-from .plugins.render_pc_driver import RenderPCDriver
 from rclpy.executors import MultiThreadedExecutor
+from .plugins.render_pc_driver import RenderPCDriver
+import sys
 
 
-@hydra.main(version_base='1.2', config_path="/root/dev_ws/src/config_files/component_node", config_name="feedback_projector_driver")
-def main(cfg: DictConfig):
-    """
-    Main entrypoint for Node.
-    Loads plugin config via Hydra and instantiates the selected monitor class.
-    """
+def main(args=None):
+    rclpy.init(args=args)
+    
+    if args:
+        # Parse custom arguments
+        for i, arg in enumerate(args):
+            if arg == "--layer_cn_id" and i + 1 < len(args):
+                layer_cn_id = args[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(args):
+                ros2_domain_id = int(args[i + 1])
+    else:
+        # If no args provided, try to get from sys.argv
+        for i, arg in enumerate(sys.argv):
+            if arg == "--layer_cn_id" and i + 1 < len(sys.argv):
+                layer_cn_id = sys.argv[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
+                ros2_domain_id = int(sys.argv[i + 1])
 
-    # If user provides external config file
-    if "config_path" in cfg and cfg.config_path:
-        cfg = OmegaConf.load(cfg.config_path)
 
-    rclpy.init()
+    # These parameters will be set via the launch file
+    node = RenderPCDriver(
+        layer_cn_id=layer_cn_id,          # to be overridden by launch
+        ros2_domain_id=ros2_domain_id        # to be overridden by launch
+    )
 
     try:
-        # Pick default plugin from cfg.plugins
-        plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
+        node.logging(f"RenderPCDriver node started with layer_cn_id: {layer_cn_id}", "INFO")
 
-        # # Instantiate the driver using Hydra
-        # feedback_projector_driver = instantiate(
-        #     plugin_cfg,
-        #     layer_cn_id=cfg.layer_cn_id,
-        #     ros2_domain_id=cfg.get("ros2_domain_id", None),
-        # )
-        feedback_projector_driver = RenderPCDriver(layer_cn_id=cfg.layer_cn_id, ros2_domain_id=cfg.get("ros2_domain_id", None))
-
-        feedback_projector_driver.logging("RenderPCProjecterDriver node started via Hydra", "INFO")
-        
-        # Spin the node
-        # rclpy.spin(feedback_projector_driver)
-                
-        executor = rclpy.executors.MultiThreadedExecutor()
-        executor.add_node(feedback_projector_driver)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
         executor.spin()
-        
-        
+
     except KeyboardInterrupt:
-        if 'feedback_projector_driver' in locals():
-            feedback_projector_driver.logging("Keyboard interrupt received", "INFO")
+        node.logging("Keyboard interrupt received", "INFO")
     except Exception as e:
-        if 'feedback_projector_driver' in locals():
-            feedback_projector_driver.logging(f"Unexpected error: {str(e)}", "ERROR")
-        else:
-            print(f"Error creating node: {e}")
+        node.logging(f"Unexpected error: {str(e)}", "ERROR")
     finally:
-        feedback_projector_driver.urgent_stop()
-        feedback_projector_driver.destroy_node()
+        node.urgent_stop()
+        node.destroy_node()
         rclpy.shutdown()
 
 

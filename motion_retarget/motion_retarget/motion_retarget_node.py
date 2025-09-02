@@ -1,49 +1,48 @@
 
-import hydra
-from omegaconf import OmegaConf, DictConfig
 import rclpy
-from hydra.utils import instantiate
 from .plugins.motion_retarget_ot import MotionRetargetOT
 from rclpy.executors import MultiThreadedExecutor
+import sys
 
-@hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="motion_retarget")
-def main(cfg: DictConfig):
+def main(args=None):
+    rclpy.init(args=args)
 
-    # If user provides external config file
-    if "config_path" in cfg and cfg.config_path:
-        cfg = OmegaConf.load(cfg.config_path)
+    if args:
+        # Parse custom arguments
+        for i, arg in enumerate(args):
+            if arg == "--layer_cn_id" and i + 1 < len(args):
+                layer_cn_id = args[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(args):
+                ros2_domain_id = int(args[i + 1])
+    else:
+        # If no args provided, try to get from sys.argv
+        for i, arg in enumerate(sys.argv):
+            if arg == "--layer_cn_id" and i + 1 < len(sys.argv):
+                layer_cn_id = sys.argv[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
+                ros2_domain_id = int(sys.argv[i + 1])
 
-    rclpy.init()
+
+    # These parameters will be set via the launch file
+    node = MotionRetargetOT(
+        layer_cn_id=layer_cn_id,          # to be overridden by launch
+        ros2_domain_id=ros2_domain_id        # to be overridden by launch
+    )
 
     try:
-        # Pick default plugin from cfg.plugins
-        plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
+        node.logging(f"MotionRetargetOT node started with layer_cn_id: {layer_cn_id}", "INFO")
 
-        # Instantiate the driver using Hydra
-        motion_retarget = MotionRetargetOT(
-            layer_cn_id=cfg.layer_cn_id,
-            ros2_domain_id=cfg.get("ros2_domain_id", None)
-        )
-
-        motion_retarget.logging("MultiFeedbackDataProcessor node started via Hydra", "INFO")
-        
-        # Spin the node
-        # rclpy.spin(motion_retarget)
-        executor = rclpy.executors.MultiThreadedExecutor()
-        executor.add_node(motion_retarget)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
         executor.spin()
-        
+
     except KeyboardInterrupt:
-        if 'motion_retarget' in locals():
-            motion_retarget.logging("Keyboard interrupt received", "INFO")
+        node.logging("Keyboard interrupt received", "INFO")
     except Exception as e:
-        if 'motion_retarget' in locals():
-            motion_retarget.logging(f"Unexpected error: {str(e)}", "ERROR")
-        else:
-            print(f"Error creating node: {e}")
+        node.logging(f"Unexpected error: {str(e)}", "ERROR")
     finally:
-        motion_retarget.urgent_stop()
-        motion_retarget.destroy_node()
+        node.urgent_stop()
+        node.destroy_node()
         rclpy.shutdown()
 
 

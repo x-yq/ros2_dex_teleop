@@ -338,13 +338,13 @@ class XArm5Driver(RobotDriverBase):
             if command_type == 'joint_angles':
                 positions = command.get('positions', [])
                 if len(positions) == len(self.joint_names):
-                    self.logging(f"Executing joint angles command: {positions}", "DEBUG")
+                    self.get_logger().info(f"Executing joint angles command: {positions}")
                     # Target positions already set in callback
                 else:
                     self.handle_error(f"Invalid joint angles command: wrong number of joints")
                     
             elif command_type == 'stop':
-                self.logging("Executing stop command", "INFO")
+                self.logging("Executing stop command", "WARN")
                 # Stop motion by setting target to current position
                 self.target_joint_positions = self.current_joint_positions.copy()
                 

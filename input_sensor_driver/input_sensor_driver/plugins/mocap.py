@@ -75,7 +75,7 @@ class RococoDriver(SensorDriverBase):
                             RawHandKeypoint, topic_name, 10
                         )
                     # self.get_logger().info(f"Publisher registered: {topic_name} [{msg_type}]")
-                    self.logging(f"Publisher registered: {topic_name} [{msg_type}]", "INFO")
+                    self.get_logger().info(f"Publisher registered: {topic_name} [{msg_type}]")
 
         except Exception as e:
             self.handle_error("Error during pub/sub registration: ", e)

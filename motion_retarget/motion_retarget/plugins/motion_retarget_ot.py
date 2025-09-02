@@ -200,7 +200,7 @@ class MotionRetargetOT(MotionRetargetBase):
         # Set joint velocities (same length as joint_angles)
         joint_angles_msg.joint_velocities = [0.5] * len(joint_angles_msg.joint_angles)
 
-        self.logging(f"Sent dummy joint angles: {joint_angles_msg.joint_angles}", "INFO")
+        self.get_logger().info(f"Sent dummy joint angles: {joint_angles_msg.joint_angles}")
         
         return joint_angles_msg
 

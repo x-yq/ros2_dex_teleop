@@ -1,47 +1,48 @@
 # kpi_monitor/kpi_monitor/kpi_monitor_node.py
-
-import hydra
-from omegaconf import OmegaConf, DictConfig
 import rclpy
-from hydra.utils import instantiate
 from .plugins.docker_monitor import DockerMonitor
 from rclpy.executors import MultiThreadedExecutor
+import sys
 
 
-@hydra.main(version_base=None, config_path="/root/dev_ws/src/config_files/component_node", config_name="monitor_0")
-def main(cfg: DictConfig):
-    """
-    Main entrypoint for KPI Monitor Node.
-    Loads plugin config via Hydra and instantiates the selected monitor class.
-    """
+def main(args=None):
+    rclpy.init(args=args)
 
-    # If user provides external config file
-    if "config_path" in cfg and cfg.config_path:
-        cfg = OmegaConf.load(cfg.config_path)
+    if args:
+        # Parse custom arguments
+        for i, arg in enumerate(args):
+            if arg == "--layer_cn_id" and i + 1 < len(args):
+                layer_cn_id = args[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(args):
+                ros2_domain_id = int(args[i + 1])
+    else:
+        # If no args provided, try to get from sys.argv
+        for i, arg in enumerate(sys.argv):
+            if arg == "--layer_cn_id" and i + 1 < len(sys.argv):
+                layer_cn_id = sys.argv[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
+                ros2_domain_id = int(sys.argv[i + 1])
 
-    rclpy.init()
+    # These parameters will be set via the launch file
+    node = DockerMonitor(
+        layer_cn_id=layer_cn_id,          # to be overridden by launch
+        ros2_domain_id=ros2_domain_id        # to be overridden by launch
+    )
 
     try:
+        node.logging(f"DockerMonitor node started with layer_cn_id: {layer_cn_id}", "INFO")
 
-        # Pick default plugin from cfg.plugins
-        plugin_cfg = next(p for p in cfg.plugins if p.id == cfg.default_plugin)
-
-        # NOTE: KPIMonitorBase constructor signature changed:
-        #   (layer_cn_id: str, ros2_domain_id: Optional[int] = None)
-        monitor = DockerMonitor(
-            layer_cn_id=cfg.layer_cn_id,
-            ros2_domain_id=cfg.get("ros2_domain_id", None),
-        )
-
-        # rclpy.spin(monitor)
-        executor = rclpy.executors.MultiThreadedExecutor()
-        executor.add_node(monitor)
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
         executor.spin()
 
     except KeyboardInterrupt:
-        pass
+        node.logging("Keyboard interrupt received", "INFO")
+    except Exception as e:
+        node.logging(f"Unexpected error: {str(e)}", "ERROR")
     finally:
-        monitor.destroy_node()
+        node.urgent_stop()
+        node.destroy_node()
         rclpy.shutdown()
 
 
