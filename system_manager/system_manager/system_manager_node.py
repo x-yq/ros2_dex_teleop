@@ -32,7 +32,7 @@ class SystemManager(Node):
         
         # File paths for logging
         self.system_log_file = "/root/dev_ws/log/system.log"
-        self.monitor_log_file = "/root/dev_ws/log/monitor.log"
+        self.monitor_log_file = "/root/dev_ws/log/monitor"
         
         # Initialize configuration storage
         self.config_folder_path = config_folder_path
@@ -178,6 +178,20 @@ class SystemManager(Node):
 
         self.logging(self.system_log_file, 'Component communication service clients created', 'INFO')
     
+    def _load_expected_components(self):
+        """Load expected component nodes from configuration"""
+        try:
+            if 'component_node' in self.all_configs:
+                for component_name in self.all_configs['component_node'].keys():
+                    if 'monitor' in component_name:
+                        continue
+                    self.expected_components.add(component_name)
+            
+            self.logging(self.system_log_file, f"Expected components: {list(self.expected_components)}", 'INFO')
+            
+        except Exception as e:
+            self.logging(self.system_log_file, f"Failed to load expected components: {e}", 'WARN')
+            
     def component_states_callback(self, msg):
         """Handle component status messages"""
         self.component_statuses[msg.layer_cn_id] = msg.status
@@ -194,20 +208,6 @@ class SystemManager(Node):
                 
                 self.logging(self.system_log_file, f'Component error detected: {msg.layer_cn_id} -> {msg.status}', 'ERROR')
                 self._handle_component_error(msg.layer_cn_id)
-
-    def _load_expected_components(self):
-        """Load expected component nodes from configuration"""
-        try:
-            if 'component_node' in self.all_configs:
-                for component_name in self.all_configs['component_node'].keys():
-                    if 'monitor' in component_name:
-                        continue
-                    self.expected_components.add(component_name)
-            
-            self.logging(self.system_log_file, f"Expected components: {list(self.expected_components)}", 'INFO')
-            
-        except Exception as e:
-            self.logging(self.system_log_file, f"Failed to load expected components: {e}", 'WARN')
 
 ########################## system control service ###############################
 
@@ -621,8 +621,8 @@ class SystemManager(Node):
             log_entry = f"{request.layer_cn_id}: {request.message}"
             
             # Route to appropriate log file
-            if request.log_level == "MONITOR":
-                log_file = self.monitor_log_file
+            if "MONITOR" in request.log_level:
+                log_file = os.path.join(self.monitor_log_file, f"{request.log_level}.log")
             else:
                 log_file = self.system_log_file
                 
@@ -636,8 +636,10 @@ class SystemManager(Node):
                 self.logging(self.system_log_file, f"[{request.layer_cn_id}] {request.message}", 'WARN')
             elif request.log_level == 'INFO':
                 self.logging(self.system_log_file, f"[{request.layer_cn_id}] {request.message}", 'INFO')
-            else:  # DEBUG, MONITOR
+            elif request.log_level == 'DEBUG':  # DEBUG, MONITOR
                 self.logging(self.system_log_file, f"[{request.layer_cn_id}] {request.message}", 'DEBUG')
+            else:
+                self.logging(self.system_log_file, f"{request.message}", 'MONITOR')
                 
             response.success = True
             response.message = "Log entry recorded successfully"
@@ -783,7 +785,8 @@ def main(args=None):
 
     # Create the driver node with the parsed parameters
     node = SystemManager(
-        config_folder_path=config_folder_path
+        config_folder_path=config_folder_path,
+        ros2_domain_id=ros2_domain_id
     )
 
     try:

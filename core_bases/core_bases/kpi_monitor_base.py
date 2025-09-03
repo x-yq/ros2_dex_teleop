@@ -7,6 +7,7 @@ from builtin_interfaces.msg import Time, Duration
 from .component_node import ComponentNode
 from system_interfaces.srv import StartMonitor, StopMonitor
 import json
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 
 class KPIMonitorBase(ComponentNode):
@@ -18,22 +19,22 @@ class KPIMonitorBase(ComponentNode):
     def __init__(self, layer_cn_id: str, ros2_domain_id: int = None):
         super().__init__(layer_cn_id, ros2_domain_id)
 
-        self.kpi_metrics = {}
-        self.monitor_timer = None
-        self.active_session_id = None
-        self.monitored_container_id = None
-        self.my_config = {}
+        self.callback_group = ReentrantCallbackGroup()
+
 
         # Expose monitor services
         self.start_monitor_srv = self.create_service(
             StartMonitor,
-            "start_monitor",
-            self.start_monitor_srv_callback
+            f"{layer_cn_id}/start_monitor",
+            self.start_monitor_srv_callback,
+            callback_group=self.callback_group
         )
         self.stop_monitor_srv = self.create_service(
             StopMonitor,
-            "stop_monitor",
-            self.stop_monitor_srv_callback
+            f"{layer_cn_id}/stop_monitor",
+            self.stop_monitor_srv_callback,
+            callback_group=self.callback_group
+
         )
 
     # ------------------------------------------------------------------
@@ -65,15 +66,37 @@ class KPIMonitorBase(ComponentNode):
     # Helper methods
     # ------------------------------------------------------------------
 
+    # def log_kpi(self, msg):
+    #     """Use ComponentNode.logging to send KPI data to SystemManager with MONITOR log level."""
+    #     to_log = ''
+    #     for i in msg:
+    #         m = json.dumps(i)
+    #         to_log += m
+    #     self.get_logger().warn(to_log)
+    #     self.logging(to_log, log_level="MONITOR")
+
     def log_kpi(self, msg):
         """Use ComponentNode.logging to send KPI data to SystemManager with MONITOR log level."""
-        to_log = ''
-        for i in msg:
-            m = json.dumps(i)
-            to_log += m
+        
+        if isinstance(msg, str):
+            # If msg is already a string, log it directly
+            to_log = msg
+        elif isinstance(msg, (dict, list)):
+            # If msg is JSON-like (dict or list), use json.dumps
+            to_log = json.dumps(msg)
+        else:
+            # For other types (like the original list of dicts), process each item
+            to_log = ''
+            try:
+                for i in msg:
+                    m = json.dumps(i)
+                    to_log += m
+            except (TypeError, ValueError):
+                # If json.dumps fails, convert to string
+                to_log = str(msg)
+        
         self.get_logger().warn(to_log)
-        self.logging(to_log, log_level="MONITOR")
-
+        self.logging(to_log, log_level=f"MONITOR_{self.layer_cn_id}")
     # ------------------------------------------------------------------
     # Required methods
     # ------------------------------------------------------------------
@@ -105,7 +128,7 @@ class KPIMonitorBase(ComponentNode):
         self.get_logger().debug(f"Checking plugins for {self.layer_cn_id}")
         
         # Check if concrete implementation provides required projection capabilities
-        required_methods = ['register_pub_sub', 'register_timer', 'urgent_stop', '_load_my_config', 'start_monitor_srv_callback', 'stop_monitor_srv_callback']
+        required_methods = ['register_pub_sub', 'register_timer', 'urgent_stop', 'start_monitor_srv_callback', 'stop_monitor_srv_callback']
         
         for method_name in required_methods:
             if not hasattr(self, method_name) or not callable(getattr(self, method_name)):

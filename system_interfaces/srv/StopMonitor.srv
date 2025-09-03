@@ -1,8 +1,7 @@
 # Request
-string monitor_session_id
+string container_id
 ---
 # Response
 bool success
-string hardware_id
 string container_id
 string results_file_path

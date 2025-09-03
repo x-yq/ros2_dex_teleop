@@ -1,10 +1,7 @@
 # Request
-string monitor_session_id
 string container_id
-string[] metrics
 ---
 # Response
 bool success
-string hardware_id
 string container_id
 builtin_interfaces/Time start_time
