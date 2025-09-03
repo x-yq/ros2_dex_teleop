@@ -97,9 +97,16 @@ def generate_launch_description():
         ),
         Node(
             package="kpi_monitor",
-            executable="monitor_0",
-            name="kpi_monitor",
+            executable="kpi_monitor_node",
+            name="monitor_0",
             output="screen",
-            arguments=["--layer_cn_id", kpi_monitor, "--ros2_domain_id", ros_domain_id]
+            arguments=["--layer_cn_id", "monitor_0", "--ros2_domain_id", ros_domain_id]
+        ),
+        Node(
+            package="kpi_monitor",
+            executable="kpi_monitor_node",
+            name="monitor_1",
+            output="screen",
+            arguments=["--layer_cn_id", "monitor_1", "--ros2_domain_id", ros_domain_id]
         ),
     ])

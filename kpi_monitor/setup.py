@@ -20,7 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'monitor_0 = kpi_monitor.kpi_monitor_node:main'
+            'kpi_monitor_node = kpi_monitor.kpi_monitor_node:main'
         ],
     },
 )
