@@ -38,6 +38,8 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                                       'rightLittleProximal', 'rightLittleMedial', 'rightLittleDistal', 'rightLittleTip']
         
         self._load_my_config()
+        if self.simulate_latency > 0:
+            self._setup_latency_simulation()
 
 
     def _load_my_config(self):
@@ -52,6 +54,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                     if plugin.get('id') == 'rococo_handkeypoint_processor' or plugin.get('_target_', '').endswith('RococoHandKeypointProcessor'):
                         plugin_params = plugin.get('params', {})
                         self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
+                        self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
                         self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
                         break
                 

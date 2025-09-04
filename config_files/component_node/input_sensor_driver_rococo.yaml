@@ -18,4 +18,5 @@ plugins:
     priority: 1
     params: # for node with plugin initialization
       freq: 1
+      simulate_latency: 100
 

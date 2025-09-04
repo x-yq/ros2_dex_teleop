@@ -26,6 +26,9 @@ class RococoDriver(SensorDriverBase):
         self.rococo_connection_status = False
 
         self._load_my_config()
+        self.get_logger().warn(f"simulated latency: {self.simulate_latency}")
+        if self.simulate_latency > 0:
+            self._setup_latency_simulation()
 
         self.start_sensor('rococo')
         
@@ -44,6 +47,7 @@ class RococoDriver(SensorDriverBase):
                     if plugin.get('id') == 'rococo_driver' or plugin.get('_target_', '').endswith('RococoDriver'):
                         plugin_params = plugin.get("params", {})
                         self.freq = plugin_params.get("freq", self.freq)
+                        self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
                         self.get_logger().info(f"Loaded RococoDriver config: {self.freq}Hz")
                         break
 

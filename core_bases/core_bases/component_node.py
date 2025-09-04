@@ -14,6 +14,7 @@ from system_interfaces.msg import *
 from component_interfaces.msg import *
 import time
 import importlib
+import subprocess
 
 
 class ComponentNode(Node, ABC):
@@ -45,6 +46,8 @@ class ComponentNode(Node, ABC):
         self.pending_ping_ids = {}   # {send_id: send_time_ns}
         self.latency_pubs = {}       # pong publishers
         self.latency_subs = {}       # pong subscribers
+
+        self.simulate_latency = 0
 
 
         self.compo_timers = []
@@ -246,6 +249,8 @@ class ComponentNode(Node, ABC):
                 timer.cancel()
 
     def stop_component(self):
+        if self.simulate_latency > 0:
+            self._cleanup_latency_simulation()
         if self.compo_timers and self.compo_timers!=[]:
             for timer in self.compo_timers:
                 timer.destroy()
@@ -360,6 +365,76 @@ class ComponentNode(Node, ABC):
         """Verify that plugins implement required interfaces."""
         pass
 
+    # ------------------------------------------------------------------
+    # Latency Simulation Setup
+    # ------------------------------------------------------------------
+    
+    def _setup_latency_simulation(self):
+        """Setup network latency simulation using tc qdisc"""
+        try:
+            # Get the network interface (typically eth0 or similar)
+            interface = self._get_network_interface()
+            if not interface:
+                self.get_logger().warn("Could not determine network interface for latency simulation")
+                return
+            
+            # Add latency using tc qdisc
+            cmd = [
+                "sudo", "tc", "qdisc", "add", "dev", interface, "root", "netem",
+                "delay", f"{self.simulate_latency}ms"
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                self.get_logger().info(f"Network latency simulation setup: {self.simulate_latency}ms on {interface}")
+            else:
+                self.get_logger().error(f"Failed to setup latency simulation: {result.stderr}")
+                
+        except Exception as e:
+            self.get_logger().error(f"Error setting up latency simulation: {e}")
+    
+    def _get_network_interface(self) -> Optional[str]:
+        """Get the primary network interface name"""
+        try:
+            # Try to get default route interface
+            result = subprocess.run(
+                ["ip", "route", "show", "default"], 
+                capture_output=True, text=True
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if 'dev' in line:
+                        parts = line.split()
+                        dev_index = parts.index('dev')
+                        if dev_index + 1 < len(parts):
+                            return parts[dev_index + 1]
+            
+            # Fallback: try common interface names
+            common_interfaces = ['eth0', 'enp0s3', 'ens33', 'wlan0']
+            for iface in common_interfaces:
+                result = subprocess.run(
+                    ["ip", "link", "show", iface], 
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    return iface
+                    
+        except Exception as e:
+            self.get_logger().warn(f"Error determining network interface: {e}")
+        
+        return None
+    
+    def _cleanup_latency_simulation(self):
+        """Cleanup network latency simulation"""
+        try:
+            interface = self._get_network_interface()
+            if interface:
+                cmd = ["sudo", "tc", "qdisc", "del", "dev", interface, "root"]
+                subprocess.run(cmd, capture_output=True, text=True)
+                self.get_logger().info(f"Cleaned up latency simulation on {interface}")
+        except Exception as e:
+            self.get_logger().warn(f"Error cleaning up latency simulation: {e}")
 
     # ------------------------------------------------------------------
     # Latency Measruement Methods (ping pong)
