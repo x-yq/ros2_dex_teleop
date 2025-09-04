@@ -23,7 +23,6 @@ class FeedbackProjectorDriverBase(ComponentNode, ABC):
         super().__init__(layer_cn_id, ros2_domain_id)
         
         # Core attributes
-        self.feedback_subscribers: Dict[str, Subscription] = {}
         self.my_config: Dict[str, Any] = {}
         self.hardware_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}

@@ -32,8 +32,9 @@ class SystemManager(Node):
         
         # File paths for logging
         self.system_log_file = "/root/dev_ws/log/system.log"
-        self.monitor_log_file = "/root/dev_ws/log/monitor"
-        
+        self.monitor_log_folder = "/root/dev_ws/log/monitor"
+        self.latency_log_folder = "/root/dev_ws/log/latency"
+
         # Initialize configuration storage
         self.config_folder_path = config_folder_path
         self._initialize_configs()
@@ -622,7 +623,9 @@ class SystemManager(Node):
             
             # Route to appropriate log file
             if "MONITOR" in request.log_level:
-                log_file = os.path.join(self.monitor_log_file, f"{request.log_level}.log")
+                log_file = os.path.join(self.monitor_log_folder, f"{request.log_level}.log")
+            elif "LATENCY" in request.log_level:
+                log_file = os.path.join(self.latency_log_folder, f"{request.log_level}.log")
             else:
                 log_file = self.system_log_file
                 
@@ -636,10 +639,12 @@ class SystemManager(Node):
                 self.logging(self.system_log_file, f"[{request.layer_cn_id}] {request.message}", 'WARN')
             elif request.log_level == 'INFO':
                 self.logging(self.system_log_file, f"[{request.layer_cn_id}] {request.message}", 'INFO')
-            elif request.log_level == 'DEBUG':  # DEBUG, MONITOR
+            elif request.log_level == 'DEBUG':  # DEBUG
                 self.logging(self.system_log_file, f"[{request.layer_cn_id}] {request.message}", 'DEBUG')
-            else:
+            elif 'MONITOR' in request.log_level:
                 self.logging(self.system_log_file, f"{request.message}", 'MONITOR')
+            else: # Latency
+                self.logging(self.system_log_file, f"{request.message}", 'LATENCY')
                 
             response.success = True
             response.message = "Log entry recorded successfully"

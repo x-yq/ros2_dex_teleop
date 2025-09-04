@@ -21,7 +21,6 @@ class SensorDriverBase(ComponentNode, ABC):
         
         # Attributes
         self.sensor_config: Dict[str, Dict[str, str]] = {}
-        self.data_publishers: Dict[str, Publisher] = {}
 
         self.my_config: Dict[str, Any] = {}
         self.hardware_config: Dict[str, Any] = {}
@@ -85,27 +84,11 @@ class SensorDriverBase(ComponentNode, ABC):
         """
         pass
 
-    def publish_data(self, topic_id: str, data: Any):
-        """
-        Publish data to a specific topic.
-        
-        Args:
-            publisher: ROS2 publisher instance
-            topic_id: Topic identifier
-            data: Data to publish
-        """
-        try:
-            publisher = self.data_publishers[topic_id]
-            publisher.publish(data)
-            self.logging(f"Published data to topic: {topic_id}", "DEBUG")
-        except Exception as e:
-            self.logging(f"Failed to publish data to {topic_id}: {str(e)}", "ERROR")
-
     @abstractmethod
     def stream(self):
         """
         Main streaming function that orchestrates the sensor data flow.
-        Should implement the logic from start_sensor to publish_data to stop_sensor.
+        Should implement the logic from start_sensor to publish_msg to stop_sensor.
         This method should be called in a loop or timer callback.
         """
         pass

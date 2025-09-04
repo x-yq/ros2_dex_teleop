@@ -21,7 +21,6 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/feedback/RobotState.msg"
   "msg/feedback/Hand2DPlotData.msg"
   "msg/cmd_robot_space/JointAngles.msg"
-  "msg/dynamic_transform/DynamicTransform.msg"
   DEPENDENCIES builtin_interfaces std_msgs geometry_msgs sensor_msgs
 )
 

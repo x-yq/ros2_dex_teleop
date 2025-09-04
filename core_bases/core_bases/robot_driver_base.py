@@ -22,8 +22,6 @@ class RobotDriverBase(ComponentNode, ABC):
         
         # Attributes
         self.simulated = simulated
-        self.cmd_subscribers: Dict[str, Subscription] = {}
-        self.state_publishers: Dict[str, Publisher] = {}
 
         self.my_config: Dict[str, Any] = {}
         self.hardware_config: Dict[str, Any] = {}
@@ -61,22 +59,6 @@ class RobotDriverBase(ComponentNode, ABC):
             Any: Robot state in appropriate format
         """
         pass
-
-    def publish_state(self, topic_id: str, state: Any):
-        """
-        Publish robot state to a specific topic.
-        
-        Args:
-            publisher: ROS2 publisher instance
-            topic_id: Topic identifier
-            state: Robot state data to publish
-        """
-        try:
-            publisher = self.state_publishers[topic_id]
-            publisher.publish(state)
-            self.logging(f"Published robot state to topic: {topic_id}", "DEBUG")
-        except Exception as e:
-            self.logging(f"Failed to publish state to {topic_id}: {str(e)}", "ERROR")
 
     @abstractmethod
     def home(self):

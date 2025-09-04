@@ -19,8 +19,6 @@ class DataProcessorBase(ComponentNode, ABC):
         super().__init__(layer_cn_id, ros2_domain_id)
         
         # Attributes
-        self.raw_data_subscribers: Dict[str, Subscription] = {}
-        self.processed_data_publishers: Dict[str, Publisher] = {}
         
         self.my_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
@@ -34,26 +32,6 @@ class DataProcessorBase(ComponentNode, ABC):
         if not self.data_stream_config:
             self.get_logger().error("Failed to load data stream configuration")
             self.data_stream_config = {}
-        
-
-    def publish_processed_data(self, topic_id: str, msg: Any):
-        """
-        Publish processed data. Multiple topics possible.
-        
-        Args:
-            topic_id: Topic identifier for publishing
-            msg: Processed message to publish
-        """
-
-        if topic_id in self.processed_data_publishers:
-            try:
-                publisher = self.processed_data_publishers[topic_id]
-                publisher.publish(msg)
-                self.logging(f"Published processed data to topic: {topic_id}", "DEBUG")
-            except Exception as e:
-                self.logging(f"Failed to publish processed data to {topic_id}: {str(e)}", "ERROR")
-        else:
-            self.logging(f"Publisher for topic {topic_id} not found", "ERROR")
 
     def register_pub_sub(self):
         """Register publishers and subscribers based on configuration."""

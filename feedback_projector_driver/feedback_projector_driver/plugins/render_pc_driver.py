@@ -75,7 +75,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
                     
                     # Create subscription based on message type
                     if msg_type == "component_interfaces/msg/SceneImage":
-                        self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             SceneImage,
                             topic_id,
                             self.scene_image_callback,
@@ -84,7 +84,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
                         self.get_logger().info(f"Subscribed to {topic_id}")
                         
                     elif msg_type == "component_interfaces/msg/RobotState":
-                        self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             RobotState,
                             topic_id,
                             self.robot_state_callback,
@@ -93,7 +93,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
                         self.get_logger().info(f"Subscribed to {topic_id}")
                         
                     elif msg_type == "component_interfaces/msg/Hand2DPlotData":
-                        self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             Hand2DPlotData,
                             topic_id,
                             self.hand_plot_callback,

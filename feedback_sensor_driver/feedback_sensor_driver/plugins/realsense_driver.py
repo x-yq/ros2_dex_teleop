@@ -139,20 +139,19 @@ class RealsenseDriver(SensorDriverBase):
                     
                     if msg_type == 'sensor_msgs/msg/Image':
                         # Create publisher for raw image data
-                        publisher = self.create_publisher(
+                        self.compo_publishers[topic_id] = self.create_publisher(
                             Image,
                             topic_id,
                             10
                         )
-                        self.data_publishers[topic_id] = publisher
                         self.get_logger().info(f"Created publisher for {topic_id} with type {msg_type}")
                     else:
                         self.get_logger().warn(f"Unsupported message type: {msg_type} for topic {topic_id}")
             
-            self.get_logger().info(f"Registered {len(self.data_publishers)} publishers")
+            self.get_logger().info(f"Registered {len(self.compo_publishers)} publishers")
             
         except Exception as e:
-            self.handle_error("Error in register_pub_sub", e)
+            self.handle_error("Error in publish_msg_pub_sub", e)
 
     def start_sensor(self, sensor_id: str) -> bool:
         """Start the RealSense camera sensor."""
@@ -326,10 +325,10 @@ class RealsenseDriver(SensorDriverBase):
                     cam_id = cam_data['cam_id']
                     
                     # Create and publish Image message
-                    if 'scene_image_raw' in self.data_publishers:
+                    if 'scene_image_raw' in self.compo_publishers:
                         img_msg = self._create_image_msg(rgb_image, timestamp, cam_id)
                         if img_msg is not None:
-                            self.publish_data('scene_image_raw', img_msg)
+                            self.publish_msg('scene_image_raw', img_msg)
                             self.get_logger().debug(f"Published scene image from camera {cam_id}")
                     else:
                         self.get_logger().warn("No publisher found for scene_image_raw")
@@ -339,15 +338,15 @@ class RealsenseDriver(SensorDriverBase):
         except Exception as e:
             self.handle_error("Error in stream", e)
 
-    def register_timer(self):
-        if self._timers != []:
-            for t in self._timers:
+    def publish_msg_timer(self):
+        if self.compo_timers != []:
+            for t in self.compo_timers:
                 t.cancel
 
         # Calculate timer period from frequency
         timer_period = 1.0 / self.fps
         timer = self.create_timer(timer_period, self.stream)
-        self._timers.append(timer)
+        self.compo_timers.append(timer)
 
 
     def urgent_stop(self):

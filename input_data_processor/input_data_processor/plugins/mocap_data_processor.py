@@ -80,7 +80,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                     msg_type = topic_config["msg_type"]
                     
                     if msg_type == "component_interfaces/msg/RawHandKeypoint":
-                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             RawHandKeypoint,
                             topic_id,
                             self.raw_data_callback,
@@ -93,7 +93,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                     msg_type = topic_config["msg_type"]
                     
                     if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
-                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                        self.compo_publishers[topic_id] = self.create_publisher(
                             ProcessedHandKeypoint,
                             topic_id,
                             10
@@ -108,15 +108,13 @@ class RococoHandKeypointProcessor(DataProcessorBase):
     def raw_data_callback(self, msg: RawHandKeypoint):
         """Callback for raw hand keypoint data"""
 
-        ##NOTE
-        # if self.state!='running':
-        #     return  
-
         self.get_logger().debug(f"Received raw hand keypoint data with {len(msg.fingertips)} fingertips")
         
-        self.process_data(msg)
+        self.pong_reply("right_hand_keypoint_raw", msg)
 
-    def process_data(self, raw_data: RawHandKeypoint):
+        self.process_right_hand_data(msg)
+
+    def process_right_hand_data(self, raw_data: RawHandKeypoint):
         """
         Process raw hand keypoint data into processed format
         """
@@ -128,7 +126,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
             processed_msg = self.process_hand(raw_data, is_left=False)
             
             # Publish processed data
-            self.publish_processed_data("right_hand_keypoint_processed", processed_msg)
+            self.publish_msg("right_hand_keypoint_processed", processed_msg)
             
             self.get_logger().debug("Data processing completed successfully")
             

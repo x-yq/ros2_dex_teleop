@@ -102,11 +102,11 @@ def generate_launch_description():
             output="screen",
             arguments=["--layer_cn_id", "monitor_0", "--ros2_domain_id", ros_domain_id]
         ),
-        Node(
-            package="kpi_monitor",
-            executable="kpi_monitor_node",
-            name="monitor_1",
-            output="screen",
-            arguments=["--layer_cn_id", "monitor_1", "--ros2_domain_id", ros_domain_id]
-        ),
+        # Node(
+        #     package="kpi_monitor",
+        #     executable="kpi_monitor_node",
+        #     name="monitor_1",
+        #     output="screen",
+        #     arguments=["--layer_cn_id", "monitor_1", "--ros2_domain_id", ros_domain_id]
+        # ),
     ])

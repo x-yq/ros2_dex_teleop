@@ -9,8 +9,12 @@ import json
 from rclpy.callback_groups import MutuallyExclusiveCallbackGroup, ReentrantCallbackGroup
 
 from system_interfaces.srv import Logging, GetConfig, ComponentService
-from system_interfaces.msg import ComponentStatus, SystemCommand
+# from system_interfaces.msg import ComponentStatus, SystemCommand
+from system_interfaces.msg import *
+from component_interfaces.msg import *
 import time
+import importlib
+
 
 class ComponentNode(Node, ABC):
     """
@@ -26,6 +30,9 @@ class ComponentNode(Node, ABC):
         self.state = "disconnected"
         self.valid_states = ["disconnected", "ready", "running"]
 
+        self.compo_subscribers: Dict[str, Subscription] = {}
+        self.compo_publishers: Dict[str, Publisher] = {}
+
         self.compo_client_callback_group = ReentrantCallbackGroup()
         self.compo_srv_callback_group = ReentrantCallbackGroup()
 
@@ -33,8 +40,14 @@ class ComponentNode(Node, ABC):
         self.logging_client = self.create_client(Logging, "logging", callback_group=self.compo_client_callback_group)
         self.get_config_client = self.create_client(GetConfig, "get_config", callback_group= self.compo_client_callback_group)
 
+        
+        # Latency test
+        self.pending_ping_ids = {}   # {send_id: send_time_ns}
+        self.latency_pubs = {}       # pong publishers
+        self.latency_subs = {}       # pong subscribers
 
-        self._timers = []
+
+        self.compo_timers = []
 
         self._setup_component_communication()
 
@@ -177,7 +190,23 @@ class ComponentNode(Node, ABC):
             
         except Exception as e:
             self.get_logger().error(f"Error publishing status: {e}")
-
+    
+    def publish_msg(self, topic_id: str, msg: Any):
+        """
+        Publish data to a specific topic.
+        
+        Args:
+            publisher: ROS2 publisher instance
+            topic_id: Topic identifier
+            msg: Data to publish
+        """
+        try:
+            publisher = self.compo_publishers[topic_id]
+            msg = self.send_ping(topic_id, msg)
+            publisher.publish(msg)
+            self.logging(f"Published data to topic: {topic_id}", "DEBUG")
+        except Exception as e:
+            self.logging(f"Failed to publish data to {topic_id}: {str(e)}", "ERROR")
         
     # ------------------------------------------------------------------
     # Componenet lifecycle control
@@ -189,6 +218,7 @@ class ComponentNode(Node, ABC):
         # Register publishers and subscribers
         self._load_root_configs() # definded in the child node
         self.register_pub_sub() # definded in the bottom node
+        self.register_latency_sub_pub() # definded in this node
         
         # Verify plugins
         if self.check_plugins():
@@ -203,21 +233,21 @@ class ComponentNode(Node, ABC):
             self._publish_status()
 
     def start_component(self):
-        if self._timers == [] or not self._timers:
+        if self.compo_timers == [] or not self.compo_timers:
             self.register_timer() #defined in the bottom node
         else:
-            for timer in self._timers:
+            for timer in self.compo_timers:
                 if timer.is_canceled():
                     timer.reset()
 
     def pause_component(self):
-        if self._timers and self._timers!=[]:
-            for timer in self._timers:
+        if self.compo_timers and self.compo_timers!=[]:
+            for timer in self.compo_timers:
                 timer.cancel()
 
     def stop_component(self):
-        if self._timers and self._timers!=[]:
-            for timer in self._timers:
+        if self.compo_timers and self.compo_timers!=[]:
+            for timer in self.compo_timers:
                 timer.destroy()
 
 
@@ -329,6 +359,113 @@ class ComponentNode(Node, ABC):
     def check_plugins(self):
         """Verify that plugins implement required interfaces."""
         pass
+
+
+    # ------------------------------------------------------------------
+    # Latency Measruement Methods (ping pong)
+    # ------------------------------------------------------------------
+    
+    def _resolve_msg_type(self, msg_type_str: str):
+        """
+        Dynamically import a ROS 2 message type from a string like:
+          'sensor_msgs/msg/Image'
+          'component_interfaces/msg/RobotState'
+        Returns the corresponding Python class.
+        """
+        try:
+            pkg, _, msg_name = msg_type_str.partition('/msg/')
+            self.get_logger().info(f"Resolving msg_type: {msg_type_str} -> {pkg}.msg.{msg_name}")
+
+            if not pkg or not msg_name:
+                raise ValueError(f"Invalid msg_type format: {msg_type_str}")
+
+            module = importlib.import_module(f"{pkg}.msg")
+            return getattr(module, msg_name)
+        except Exception as e:
+            self.get_logger().error(f"Failed to resolve message type '{msg_type_str}': {e}")
+            raise
+
+    def register_latency_sub_pub(self):
+        """Register publishers and subscribers based on data_stream configuration for sub and pub"""
+        try:
+            if not self.data_stream_config or "topics" not in self.data_stream_config:
+                self.handle_error("Data stream configuration not available or invalid")
+                return
+
+            for topic_config in self.data_stream_config["topics"]:
+                topic_id = topic_config["id"]
+                msg_type = topic_config["msg_type"]
+                latency_test = topic_config.get("latency_test_target", False)
+
+                # ---------------------------
+                # Ping node (subscribe the pong topic)
+                # ---------------------------
+                if latency_test and topic_config.get("publisher") == self.layer_cn_id:
+                    # normal publisher already created elsewhere...
+                    pong_topic = f"{topic_id}_pong"
+                    self.latency_subs[topic_id] = self.create_subscription(
+                        self._resolve_msg_type(msg_type),
+                        pong_topic,
+                        lambda msg, tid=topic_id: self._pong_callback(msg, tid),
+                        10
+                    )
+                    self.get_logger().info(f"[Ping] Subscribed to pong topic: {pong_topic}")
+
+                # ---------------------------
+                # Pong node (subscriber side)
+                # ---------------------------
+                if latency_test and self.layer_cn_id in topic_config.get("subscribers", []):
+                    pong_topic = f"{topic_id}_pong"
+                    self.latency_pubs[topic_id] = self.create_publisher(
+                        self._resolve_msg_type(msg_type),
+                        pong_topic,
+                        10
+                    )
+                    self.get_logger().info(f"[Pong] Created pong publisher: {pong_topic}")
+
+        except Exception as e:
+            self.handle_error("Failed to register publishers/subscribers for latency test", e)
+
+    def send_ping(self, topic_id, msg):
+        """Attach send_id and record timestamp before publishing"""
+        if topic_id not in self.latency_subs:
+            return msg
+
+        if topic_id not in self.pending_ping_ids:
+            self.pending_ping_ids[topic_id] = {}
+
+        send_id = str(time.time_ns())
+        if hasattr(msg, "send_id"):
+            msg.send_id = send_id
+        else:
+            # fallback: attach dynamically if message has no header
+            try:
+                msg.header.frame_id = send_id
+            except Exception:
+                self.get_logger().warn(f"Message {type(msg)} has no header/send_id field")
+
+        self.pending_ping_ids[topic_id][send_id] = time.time_ns()
+        return msg
+
+    def _pong_callback(self, msg, topic_id):
+        """Handle pong replies and compute latency"""
+        recv_time = time.time_ns()
+        send_id = None
+        if hasattr(msg, "send_id"):
+            send_id = msg.send_id
+        elif hasattr(msg, "header"):
+            send_id = msg.header.frame_id
+
+        if send_id and send_id in self.pending_ping_ids.get(topic_id, {}):
+            send_time = self.pending_ping_ids[topic_id].pop(send_id)
+            rtt_ms = (recv_time - send_time) / 1e6
+            self.logging(f"[Latency] Topic {topic_id} RTT = {rtt_ms/2.0:.3f} ms", f"LATENCY_{topic_id}")
+            # self.get_logger().info(f"[Latency] Topic {topic_id} RTT = {rtt_ms:.3f} ms")
+
+    def pong_reply(self, topic_id, msg):
+        """Republish ping as pong"""
+        if topic_id in self.latency_pubs:
+            self.latency_pubs[topic_id].publish(msg)
 
 
     # ------------------------------------------------------------------

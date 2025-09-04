@@ -70,7 +70,7 @@ class MotionRetargetOT(MotionRetargetBase):
                     msg_type = topic_config["msg_type"]
                     
                     if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
-                        self.control_data_subscribers[topic_id] = self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             ProcessedHandKeypoint,
                             topic_id,
                             self.hand_keypoint_callback,
@@ -83,7 +83,7 @@ class MotionRetargetOT(MotionRetargetBase):
                     msg_type = topic_config["msg_type"]
                     
                     if msg_type == "component_interfaces/msg/JointAngles":
-                        self.cmd_publishers[topic_id] = self.create_publisher(
+                        self.compo_publishers[topic_id] = self.create_publisher(
                             JointAngles,
                             topic_id,
                             10
@@ -94,44 +94,13 @@ class MotionRetargetOT(MotionRetargetBase):
             
         except Exception as e:
             self.handle_error(f"Failed to register publishers/subscribers: {str(e)}")
-
-    # def publish_cmd(self, topic_id: str, msg: Any) -> bool:
-    #     """
-    #     Publish command message to the specified topic.
-        
-    #     Args:
-    #         topic_id: The ID of the topic to publish to
-    #         msg: The message to publish
-            
-    #     Returns:
-    #         bool: True if successful, False otherwise
-    #     """
-    #     try:
-    #         # Check if we have a publisher for this topic
-    #         if topic_id not in self.cmd_publishers:
-    #             self.get_logger().warn(f"No publisher found for topic: {topic_id}")
-    #             return False
-            
-    #         # Get the publisher
-    #         publisher = self.cmd_publishers[topic_id]
-            
-    #         # Publish the message
-    #         publisher.publish(msg)
-            
-    #         self.get_logger().debug(f"Published command to {topic_id}")
-    #         return True
-            
-    #     except Exception as e:
-    #         self.handle_error(f"Error publishing command to {topic_id}: {str(e)}")
-    #         return False
             
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
-        ##NOTE
-        # if self.state!='running':
-        #     return  
 
         self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
+
+        self.pong_reply("right_hand_keypoint_processed", msg)
         
         # Retarget the hand data to robot commands
         self.retarget_hand_data(msg)
@@ -149,7 +118,7 @@ class MotionRetargetOT(MotionRetargetBase):
             joint_angles_msg = self.retarget_control_to_robot_space(hand_data, transforms)
             
             # Publish robot command
-            self.publish_cmd("joint_angles_cmd", joint_angles_msg)
+            self.publish_msg("joint_angles_cmd", joint_angles_msg)
             
             self.get_logger().debug("Hand data retargeting completed successfully")
             
@@ -199,8 +168,6 @@ class MotionRetargetOT(MotionRetargetBase):
         
         # Set joint velocities (same length as joint_angles)
         joint_angles_msg.joint_velocities = [0.5] * len(joint_angles_msg.joint_angles)
-
-        self.get_logger().info(f"Sent dummy joint angles: {joint_angles_msg.joint_angles}")
         
         return joint_angles_msg
 
@@ -288,7 +255,7 @@ class MotionRetargetOT(MotionRetargetBase):
         stop_msg.joint_angles = [0.0] * len(self.robot_joint_names)
         stop_msg.timeout = Duration(sec=0, nanosec=0)
         
-        self.publish_cmd("joint_angles_cmd", stop_msg)
+        self.publish_msg("joint_angles_cmd", stop_msg)
 
         self.stop_component()
 

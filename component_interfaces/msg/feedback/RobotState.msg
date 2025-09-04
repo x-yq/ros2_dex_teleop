@@ -1,4 +1,5 @@
 std_msgs/Header header
+string send_id
 string robot_id
 string[] joint_names
 sensor_msgs/JointState joint_states

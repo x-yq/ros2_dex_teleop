@@ -18,9 +18,6 @@ class MotionRetargetBase(ComponentNode, ABC):
     def __init__(self, layer_cn_id: str, ros2_domain_id: Optional[int] = None):
         super().__init__(layer_cn_id, ros2_domain_id)
         
-        # Attributes
-        self.control_data_subscribers: Dict[str, Subscription] = {}
-        self.cmd_publishers: Dict[str, Publisher] = {}
         
         # Transform data storage
         self.static_transforms_cache: Dict[tuple, Any] = {}
@@ -42,25 +39,6 @@ class MotionRetargetBase(ComponentNode, ABC):
         self.data_stream_config = self.load_data_stream_config()
         if self.data_stream_config:
             self.get_logger().info("Loaded data stream config")
-            
-
-    def publish_cmd(self, topic_id: str, msg: Any):
-        """
-        Publish robot command to a specific topic.
-        
-        Args:
-            topic_id: Topic identifier for publishing
-            msg: Command message to publish in robot space
-        """
-        if topic_id in self.cmd_publishers:
-            try:
-                publisher = self.cmd_publishers[topic_id]
-                publisher.publish(msg)
-                # self.logging(f"Published robot command to topic: {topic_id}", "DEBUG")
-            except Exception as e:
-                self.logging(f"Failed to publish command to {topic_id}: {str(e)}", "ERROR")
-        else:
-            self.logging(f"Publisher for topic {topic_id} not found", "ERROR")
 
     @abstractmethod
     def retarget_control_to_robot_space(self, control_data: Any, transforms: Dict[str, Any]) -> Any:

@@ -1,4 +1,0 @@
-string src_frame_id
-string tgt_frame_id
-geometry_msgs/Transform transform
-builtin_interfaces/Time timestamp

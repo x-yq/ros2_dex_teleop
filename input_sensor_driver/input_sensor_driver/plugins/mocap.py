@@ -71,7 +71,7 @@ class RococoDriver(SensorDriverBase):
                 #     continue
 
                 if msg_type == "component_interfaces/msg/RawHandKeypoint":
-                    self.data_publishers[topic_name] = self.create_publisher(
+                    self.compo_publishers[topic_name] = self.create_publisher(
                             RawHandKeypoint, topic_name, 10
                         )
                     # self.get_logger().info(f"Publisher registered: {topic_name} [{msg_type}]")
@@ -319,9 +319,10 @@ class RococoDriver(SensorDriverBase):
             
             if hand_data is not None:
                 # Create and publish RawHandKeypoint message
-                # if 'right_hand_keypoint_raw' in self.data_publishers:
+                # if 'right_hand_keypoint_raw' in self.compo_publishers:
                 msg = self._create_raw_hand_keypoint_msg(hand_data)
-                self.publish_data('right_hand_keypoint_raw', msg)
+                topic_id = 'right_hand_keypoint_raw'
+                self.publish_msg(topic_id, msg)
                 
                 self.logging("Published right hand keypoint data", "DEBUG")
                 # else:
@@ -333,15 +334,15 @@ class RococoDriver(SensorDriverBase):
             self.handle_error(f"Error in stream: ", e)
 
     def register_timer(self):
-        if self._timers != []:
-            for t in self._timers:
+        if self.compo_timers != []:
+            for t in self.compo_timers:
                 t.cancel()
 
         # Calculate timer period from frequency
         timer_period = 1.0 / self.freq
         timer = self.create_timer(timer_period, self.stream)
         self.logging(f"Registered timer at {self.freq}Hz", "INFO")
-        self._timers.append(timer)
+        self.compo_timers.append(timer)
 
     def urgent_stop(self):
         """Emergency stop - stop streaming and sensor."""

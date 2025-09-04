@@ -99,8 +99,7 @@ class XArm5Driver(RobotDriverBase):
                 # Create publishers for topics where this node is the publisher
                 if publisher == self.layer_cn_id:
                     if msg_type == 'component_interfaces/msg/RobotState':
-                        pub = self.create_publisher(RobotState, topic_id, 10)
-                        self.state_publishers[topic_id] = pub
+                        self.compo_publishers[topic_id] = self.create_publisher(RobotState, topic_id, 10)
                         self.logging(f"Created publisher for {topic_id} with type {msg_type}", "INFO")
                     else:
                         self.logging(f"Unsupported publisher message type: {msg_type}", "WARN")
@@ -108,18 +107,17 @@ class XArm5Driver(RobotDriverBase):
                 # Create subscribers for topics where this node is a subscriber
                 if self.layer_cn_id in subscribers:
                     if msg_type == 'component_interfaces/msg/JointAngles':
-                        sub = self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             JointAngles,
                             topic_id,
                             lambda msg, tid=topic_id: self.cmd_sub_callback(msg, tid),
                             10
                         )
-                        self.cmd_subscribers[topic_id] = sub
                         self.logging(f"Created subscriber for {topic_id} with type {msg_type}", "INFO")
                     else:
                         self.logging(f"Unsupported subscriber message type: {msg_type}", "WARN")
             
-            self.logging(f"Registered {len(self.state_publishers)} publishers and {len(self.cmd_subscribers)} subscribers", "INFO")
+            self.logging(f"Registered {len(self.compo_publishers)} publishers and {len(self.compo_subscribers)} subscribers", "INFO")
             
         except Exception as e:
             self.handle_error(f"Error in register_pub_sub: {str(e)}")
@@ -298,9 +296,9 @@ class XArm5Driver(RobotDriverBase):
             
             if robot_state is not None:
                 # Create and publish RobotState message
-                if 'robot_state' in self.state_publishers:
+                if 'robot_state' in self.compo_publishers:
                     msg = self._create_robot_state_msg(robot_state)
-                    self.publish_state('robot_state', msg)
+                    self.publish_msg('robot_state', msg)
                     self.logging("Published robot state", "DEBUG")
                 else:
                     self.logging("No publisher found for robot_state", "WARN")
@@ -360,15 +358,15 @@ class XArm5Driver(RobotDriverBase):
     
     def register_timer(self):
         
-        if self._timers != []:
-            for t in self._timers:
+        if self.compo_timers != []:
+            for t in self.compo_timers:
                 t.cancel()
 
         # Calculate timer period from frequency
         timer_period = 1.0 / self.freq
         timer = self.create_timer(timer_period, self.publish_robot_state)
         self.logging(f"Registered a timer for state publishing at {self.freq}Hz", "INFO")
-        self._timers.append(timer)
+        self.compo_timers.append(timer)
 
 
     def _initialize_robot(self):

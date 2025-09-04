@@ -1,4 +1,5 @@
 std_msgs/Header header
+string send_id
 geometry_msgs/Pose[] thumb_joints
 geometry_msgs/Pose[] index_joints
 geometry_msgs/Pose[] middle_joints

@@ -77,7 +77,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                     msg_type = topic_config["msg_type"]
                     
                     if msg_type == "component_interfaces/msg/ProcessedHandKeypoint":
-                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             ProcessedHandKeypoint,
                             topic_id,
                             self.hand_keypoint_callback,
@@ -86,7 +86,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                         self.get_logger().info(f"Subscribed to hand keypoints: {topic_id}")
                     
                     elif msg_type == "sensor_msgs/msg/Image":
-                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             Image,
                             topic_id,
                             self.scene_image_callback,
@@ -95,7 +95,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                         self.get_logger().info(f"Subscribed to scene image: {topic_id}")
                     
                     elif msg_type == "component_interfaces/msg/RobotState":
-                        self.raw_data_subscribers[topic_id] = self.create_subscription(
+                        self.compo_subscribers[topic_id] = self.create_subscription(
                             RobotState,
                             topic_id,
                             self.robot_state_callback,
@@ -108,7 +108,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                     msg_type = topic_config["msg_type"]
                     
                     if msg_type == "component_interfaces/msg/SceneImage":
-                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                        self.compo_publishers[topic_id] = self.create_publisher(
                             SceneImage,
                             topic_id,
                             10
@@ -116,7 +116,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                         self.get_logger().info(f"Created publisher for processed scene image: {topic_id}")
                     
                     elif msg_type == "component_interfaces/msg/Hand2DPlotData":
-                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                        self.compo_publishers[topic_id] = self.create_publisher(
                             Hand2DPlotData,
                             topic_id,
                             10
@@ -124,7 +124,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                         self.get_logger().info(f"Created publisher for hand 2D plot: {topic_id}")
                     
                     elif msg_type == "component_interfaces/msg/RobotState":
-                        self.processed_data_publishers[topic_id] = self.create_publisher(
+                        self.compo_publishers[topic_id] = self.create_publisher(
                             RobotState,
                             topic_id,
                             10
@@ -185,7 +185,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             plot_msg = self._generate_2d_plot_data(hand_data)
             
             # Publish processed data
-            self.publish_processed_data("handkeypoint_plot_2d", plot_msg)
+            self.publish_msg("handkeypoint_plot_2d", plot_msg)
             
             self.get_logger().debug("Hand data processing completed successfully")
             
@@ -202,7 +202,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             processed_image = self._generate_processed_image(image_data)
             
             # Publish processed data
-            self.publish_processed_data("scene_image_processed", processed_image)
+            self.publish_msg("scene_image_processed", processed_image)
             
             self.get_logger().debug("Scene image processing completed successfully")
             
@@ -219,7 +219,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
             processed_state = self._generate_processed_robot_state(robot_data)
             
             # Publish processed data
-            self.publish_processed_data("robot_state_processed", processed_state)
+            self.publish_msg("robot_state_processed", processed_state)
             
             self.get_logger().debug("Robot state processing completed successfully")
             
