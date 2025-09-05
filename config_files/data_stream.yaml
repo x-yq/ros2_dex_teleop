@@ -37,7 +37,6 @@ topics:
     publisher: robot_driver
     subscribers: [feedback_data_processor]
 
-
   - id: scene_image_raw 
     latency_test_target: False
     msg_type: sensor_msgs/msg/Image

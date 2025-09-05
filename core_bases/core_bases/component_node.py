@@ -15,6 +15,8 @@ from component_interfaces.msg import *
 import time
 import importlib
 import subprocess
+from rclpy.serialization import serialize_message
+
 
 
 class ComponentNode(Node, ABC):
@@ -60,25 +62,6 @@ class ComponentNode(Node, ABC):
     # ------------------------------------------------------------------
     # Component Communication Setup
     # ------------------------------------------------------------------
-    
-    # def _setup_component_communication(self):
-    #     """Setup component communication topics"""
-    #     # Subscribe to system channel for commands from SystemManager
-    #     self.system_channel_sub = self.create_subscription(
-    #         SystemCommand,
-    #         'system_channel',
-    #         self._system_command_callback,
-    #         10
-    #     )
-        
-    #     # Publisher for component status to SystemManager
-    #     self.component_channel_pub = self.create_publisher(
-    #         ComponentStatus,
-    #         'component_channel',
-    #         10
-    #     )
-        
-    #     self.get_logger().info(f"Component communication setup for {self.layer_cn_id}")
     
     def _setup_component_communication(self):
         """Setup component communication service"""
@@ -194,6 +177,7 @@ class ComponentNode(Node, ABC):
         except Exception as e:
             self.get_logger().error(f"Error publishing status: {e}")
     
+    # NOTE: API
     def publish_msg(self, topic_id: str, msg: Any):
         """
         Publish data to a specific topic.
@@ -215,6 +199,7 @@ class ComponentNode(Node, ABC):
     # Componenet lifecycle control
     # ------------------------------------------------------------------
     
+    # NOTE: API
     def _initialize_node(self):
         self.get_logger().info(f"Initializing: {self.layer_cn_id}")
         
@@ -248,6 +233,7 @@ class ComponentNode(Node, ABC):
             for timer in self.compo_timers:
                 timer.cancel()
 
+    # NOTE: API for urgent_stop()
     def stop_component(self):
         if self.simulate_latency > 0:
             self._cleanup_latency_simulation()
@@ -271,6 +257,7 @@ class ComponentNode(Node, ABC):
                 self.get_logger().warn(f"{name} service not available, retrying...")
         self.get_logger().info("All SystemManager services available")
 
+
     def get_config(self, config_file_name: str, config_keys: Optional[List[str]] = None):
         """Fetch config data from SystemManager."""
         req = GetConfig.Request()
@@ -287,6 +274,7 @@ class ComponentNode(Node, ABC):
             self.get_logger().error(f"Failed to get config: {future.result().message if future.result() else 'unknown error'}")
             return None
 
+    # NOTE: API
     def logging(self, msg: str, log_level: str = "INFO"):
         """Send log message to SystemManager."""
         req = Logging.Request()
@@ -325,6 +313,7 @@ class ComponentNode(Node, ABC):
     # Error handling methods
     # ------------------------------------------------------------------
     
+    # NOTE: API
     def handle_error(self, error_msg: str, exception: Optional[Exception] = None):
         """Handle component errors"""
         self.set_state("disconnected")
@@ -352,7 +341,7 @@ class ComponentNode(Node, ABC):
 
     @abstractmethod
     def urgent_stop(self):
-        """Emergency stop triggered by SystemManager. Need to change the state, Need to call _stop_component()"""
+        """Emergency stop triggered by SystemManager. Need to change the state, Need to call stop_component()"""
         pass
 
     @abstractmethod
@@ -369,6 +358,7 @@ class ComponentNode(Node, ABC):
     # Latency Simulation Setup
     # ------------------------------------------------------------------
     
+    # NOTE: API
     def _setup_latency_simulation(self):
         """Setup network latency simulation using tc qdisc"""
         try:
@@ -534,9 +524,11 @@ class ComponentNode(Node, ABC):
         if send_id and send_id in self.pending_ping_ids.get(topic_id, {}):
             send_time = self.pending_ping_ids[topic_id].pop(send_id)
             rtt_ms = (recv_time - send_time) / 1e6
-            self.logging(f"[Latency] Topic {topic_id} RTT = {rtt_ms/2.0:.3f} ms", f"LATENCY_{topic_id}")
+            size_bytes = len(serialize_message(msg))
+            self.logging(f"RTT = {rtt_ms/2.0:.3f} ms; Size = {size_bytes} bytes", f"LATENCY_{topic_id}")
             # self.get_logger().info(f"[Latency] Topic {topic_id} RTT = {rtt_ms:.3f} ms")
 
+    # NOTE: API
     def pong_reply(self, topic_id, msg):
         """Republish ping as pong"""
         if topic_id in self.latency_pubs:
@@ -544,7 +536,7 @@ class ComponentNode(Node, ABC):
 
 
     # ------------------------------------------------------------------
-    # Config Loader Methods
+    # Config Loader APIs
     # ------------------------------------------------------------------
     
     def load_calibration_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
