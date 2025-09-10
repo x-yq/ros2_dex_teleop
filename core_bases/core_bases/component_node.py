@@ -65,7 +65,18 @@ class ComponentNode(Node, ABC):
     
     def _setup_component_communication(self):
         """Setup component communication service"""
+
+        # Publisher for component status to SystemManager
+        self.component_channel_pub = self.create_publisher(
+            ComponentStatus,
+            'component_states',
+            10
+        )
+
         # Create service server for handling commands from SystemManager
+        if 'monitor' in self.layer_cn_id or 'data_collector' in self.layer_cn_id:
+            return
+
         service_name = f'cn_srv_{self.layer_cn_id}'
         self.component_service = self.create_service(
             ComponentService,
@@ -75,14 +86,6 @@ class ComponentNode(Node, ABC):
         )
         
         self.get_logger().info(f"Component service '{service_name}' created for {self.layer_cn_id}")
-
-        
-        # Publisher for component status to SystemManager
-        self.component_channel_pub = self.create_publisher(
-            ComponentStatus,
-            'component_states',
-            10
-        )
 
 
     def _component_service_callback(self, request, response):
@@ -261,6 +264,7 @@ class ComponentNode(Node, ABC):
     def get_config(self, config_file_name: str, config_keys: Optional[List[str]] = None):
         """Fetch config data from SystemManager."""
         req = GetConfig.Request()
+        req.layer_cn_id = self.layer_cn_id
         req.config_file_name = config_file_name
         req.config_keys = config_keys if config_keys else []
 

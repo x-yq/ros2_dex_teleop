@@ -1,6 +1,6 @@
 topics:
   - id: right_hand_keypoint_raw # also topic name
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/RawHandKeypoint
     publish_freq: 90 # in hz
     frame_id: rococo # must be one of the frame ids defined in the calibration.yaml
@@ -10,7 +10,7 @@ topics:
     dtype: float32 # for data collection based on robo-dm
   
   - id: right_hand_keypoint_processed # also topic name
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/ProcessedHandKeypoint
     publish_freq: 90 # in hz
     frame_id: rococo # must be one of the frame ids defined in the calibration.yaml

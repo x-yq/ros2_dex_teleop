@@ -140,6 +140,74 @@ class SystemManager(Node):
             self.logging(self.system_log_file, f'Failed to parse config file {config_file}: {e}', 'ERROR')
             return {}
 
+
+    def _update_demo_config_for_data_collector(self):
+        """
+        Update demo configuration specifically for DataCollector requests.
+        Reloads demo config file and manages demo_id information.
+            
+        Returns:
+            dict: Updated demo configuration
+        """
+        try:
+            # Get the current demo config file path
+            demo_config_file = os.path.join(self.config_folder_path, 'demo.yaml')
+            
+            # Reload demo config from file to get latest changes
+            fresh_demo_config = self.parse_config_file(demo_config_file)
+            
+            if not fresh_demo_config:
+                self.logging(self.system_log_file, 
+                           "Failed to reload demo config file for DataCollector", 'ERROR')
+                return self.demo_config  # Return cached version
+            
+            # Check if we have existing demo information
+            current_demo_id = self.demo_config.get('demo_id') if self.demo_config else None
+            fresh_demo_id = fresh_demo_config.get('demo_id')
+            
+            # Determine if we need to update based on demo_id changes
+            should_update = False
+            
+            if fresh_demo_id != current_demo_id:
+                # File has been updated with a different demo_id
+                should_update = True
+                self.logging(self.system_log_file, 
+                           f"Demo config file updated: {current_demo_id} -> {fresh_demo_id}", 'INFO')
+            
+            if should_update:
+                # Update the cached demo config
+                old_demo_config = self.demo_config.copy() if self.demo_config else {}
+                self.demo_config = fresh_demo_config
+                self.all_configs['demo'] = fresh_demo_config
+                
+                # Log the changes
+                self.logging(self.system_log_file, 
+                           f"Demo config updated for DataCollector: demo_id={fresh_demo_id}", 'INFO')
+                
+                # Log key changes if they exist
+                if old_demo_config:
+                    changes = []
+                    for key in ['demo_root_path', 'topics', 'storage_format', 'video_codec']:
+                        old_val = old_demo_config.get(key)
+                        new_val = fresh_demo_config.get(key)
+                        if old_val != new_val:
+                            changes.append(f"{key}: {old_val} -> {new_val}")
+                    
+                    if changes:
+                        self.logging(self.system_log_file, 
+                                   f"Demo config changes: {', '.join(changes)}", 'INFO')
+            
+            else:
+                self.logging(self.system_log_file, 
+                           "Demo config is current, no update needed", 'INFO')
+            
+            return self.demo_config
+            
+        except Exception as e:
+            self.logging(self.system_log_file, 
+                        f"Error updating demo config for DataCollector: {e}", 'ERROR')
+            return self.demo_config  # Return cached version on error
+
 ############################## Communication Setup ################################
 
     def _create_services(self):
@@ -184,7 +252,7 @@ class SystemManager(Node):
         try:
             if 'component_node' in self.all_configs:
                 for component_name in self.all_configs['component_node'].keys():
-                    if 'monitor' in component_name:
+                    if 'monitor' or 'data_collector' in component_name:
                         continue
                     self.expected_components.add(component_name)
             
@@ -675,44 +743,53 @@ class SystemManager(Node):
             super().get_logger().error(f"Failed to write to log file {log_file}: {e}")
 
     def get_config_srv_callback(self, request, response):
-        """Handle configuration retrieval requests"""
+        """Handle configuration retrieval requests with special handling for DataCollector"""
         try:
             config_name = request.config_file_name.lower().strip()
             config_keys = request.config_keys
             
-            # Create flexible mapping with aliases and exact matches
-            config_data = None
-            matched_key = None
-            
-            # First, try exact match
-            if config_name in self.all_configs:
-                config_data = self.all_configs[config_name]
-                matched_key = config_name
+            # Check if this is a demo config request that might need updating
+            if config_name == 'demo':
+                
+                # Update demo config (will only update if necessary)
+                updated_demo_config = self._update_demo_config_for_data_collector()
+                config_data = updated_demo_config
+                matched_key = 'demo'
+                
             else:
-                # Try to find partial matches or aliases
-                possible_matches = []
+                # Regular config retrieval logic (existing code)
+                config_data = None
+                matched_key = None
                 
-                for key in self.all_configs.keys():
-                    # Check for exact match (case insensitive)
-                    if key.lower() == config_name:
-                        config_data = self.all_configs[key]
-                        matched_key = key
-                        break
-                    # Check for partial matches
-                    elif config_name in key.lower() or key.lower() in config_name:
-                        possible_matches.append((key, self.all_configs[key]))
-                
-                # If no exact match found but we have partial matches
-                if config_data is None and possible_matches:
-                    if len(possible_matches) == 1:
-                        matched_key, config_data = possible_matches[0]
-                    else:
-                        # Multiple matches found, list them
-                        match_keys = [match[0] for match in possible_matches]
-                        response.success = False
-                        response.message = f"Multiple configurations match '{config_name}': {match_keys}. Please be more specific."
-                        response.config_data = "{}"
-                        return response
+                # First, try exact match
+                if config_name in self.all_configs:
+                    config_data = self.all_configs[config_name]
+                    matched_key = config_name
+                else:
+                    # Try to find partial matches or aliases
+                    possible_matches = []
+                    
+                    for key in self.all_configs.keys():
+                        # Check for exact match (case insensitive)
+                        if key.lower() == config_name:
+                            config_data = self.all_configs[key]
+                            matched_key = key
+                            break
+                        # Check for partial matches
+                        elif config_name in key.lower() or key.lower() in config_name:
+                            possible_matches.append((key, self.all_configs[key]))
+                    
+                    # If no exact match found but we have partial matches
+                    if config_data is None and possible_matches:
+                        if len(possible_matches) == 1:
+                            matched_key, config_data = possible_matches[0]
+                        else:
+                            # Multiple matches found, list them
+                            match_keys = [match[0] for match in possible_matches]
+                            response.success = False
+                            response.message = f"Multiple configurations match '{config_name}': {match_keys}. Please be more specific."
+                            response.config_data = "{}"
+                            return response
             
             if config_data is not None:
                 # Filter by requested keys if specified
@@ -720,6 +797,10 @@ class SystemManager(Node):
                     if isinstance(config_data, dict):
                         filtered_data = {}
                         for k in config_keys:
+                            # # Skip special keys used for demo_id specification
+                            # if k.startswith('demo_id='):
+                            #     continue
+                                
                             if k in config_data:
                                 filtered_data[k] = config_data[k]
                             else:
@@ -736,6 +817,8 @@ class SystemManager(Node):
                 
                 response.success = True
                 response.config_data = json.dumps(config_data, indent=2, default=str)
+                
+                # Enhanced success message for demo config
                 response.message = f"Configuration '{matched_key}' retrieved successfully"
                 
                 self.logging(self.system_log_file, f"Config request fulfilled: {config_name} -> {matched_key}", 'INFO')
@@ -755,6 +838,89 @@ class SystemManager(Node):
             self.logging(self.system_log_file, f"Config service error: {e}", 'ERROR')
             
         return response
+
+
+    # def get_config_srv_callback(self, request, response):
+    #     """Handle configuration retrieval requests"""
+    #     try:
+    #         config_name = request.config_file_name.lower().strip()
+    #         config_keys = request.config_keys
+            
+    #         # Create flexible mapping with aliases and exact matches
+    #         config_data = None
+    #         matched_key = None
+            
+    #         # First, try exact match
+    #         if config_name in self.all_configs:
+    #             config_data = self.all_configs[config_name]
+    #             matched_key = config_name
+    #         else:
+    #             # Try to find partial matches or aliases
+    #             possible_matches = []
+                
+    #             for key in self.all_configs.keys():
+    #                 # Check for exact match (case insensitive)
+    #                 if key.lower() == config_name:
+    #                     config_data = self.all_configs[key]
+    #                     matched_key = key
+    #                     break
+    #                 # Check for partial matches
+    #                 elif config_name in key.lower() or key.lower() in config_name:
+    #                     possible_matches.append((key, self.all_configs[key]))
+                
+    #             # If no exact match found but we have partial matches
+    #             if config_data is None and possible_matches:
+    #                 if len(possible_matches) == 1:
+    #                     matched_key, config_data = possible_matches[0]
+    #                 else:
+    #                     # Multiple matches found, list them
+    #                     match_keys = [match[0] for match in possible_matches]
+    #                     response.success = False
+    #                     response.message = f"Multiple configurations match '{config_name}': {match_keys}. Please be more specific."
+    #                     response.config_data = "{}"
+    #                     return response
+            
+    #         if config_data is not None:
+    #             # Filter by requested keys if specified
+    #             if config_keys:
+    #                 if isinstance(config_data, dict):
+    #                     filtered_data = {}
+    #                     for k in config_keys:
+    #                         if k in config_data:
+    #                             filtered_data[k] = config_data[k]
+    #                         else:
+    #                             # Try to find nested keys using dot notation
+    #                             nested_value = self._get_nested_value(config_data, k)
+    #                             if nested_value is not None:
+    #                                 filtered_data[k] = nested_value
+    #                     config_data = filtered_data
+    #                 else:
+    #                     response.success = False
+    #                     response.message = f"Cannot filter keys from non-dictionary configuration '{matched_key}'"
+    #                     response.config_data = "{}"
+    #                     return response
+                
+    #             response.success = True
+    #             response.config_data = json.dumps(config_data, indent=2, default=str)
+    #             response.message = f"Configuration '{matched_key}' retrieved successfully"
+                
+    #             self.logging(self.system_log_file, f"Config request fulfilled: {config_name} -> {matched_key}", 'INFO')
+                
+    #         else:
+    #             available_configs = sorted(self.all_configs.keys())
+    #             response.success = False
+    #             response.message = f"Configuration '{config_name}' not found. Available: {available_configs}"
+    #             response.config_data = "{}"
+                
+    #             self.logging(self.system_log_file, f"Unknown config requested: {config_name}", 'WARN')
+                
+    #     except Exception as e:
+    #         response.success = False
+    #         response.message = f"Error retrieving configuration: {e}"
+    #         response.config_data = "{}"
+    #         self.logging(self.system_log_file, f"Config service error: {e}", 'ERROR')
+            
+    #     return response
 
     def _get_nested_value(self, data, key):
         """Helper method to get nested dictionary values using dot notation"""
@@ -797,7 +963,7 @@ def main(args=None):
     try:
         node.logging(f"SystemManager node initialized, spinning...", "INFO")
 
-        executor = rclpy.executors.MultiThreadedExecutor(num_threads=8)
+        executor = rclpy.executors.MultiThreadedExecutor(num_threads=9)
         executor.add_node(node)
         executor.spin()
 

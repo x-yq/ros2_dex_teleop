@@ -6,73 +6,108 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, DurabilityPolicy
 import os
 import json
 import yaml
+import sys
+import importlib
 from datetime import datetime
 from builtin_interfaces.msg import Time, Duration
 from std_msgs.msg import String, Header
+from rclpy.callback_groups import ReentrantCallbackGroup
+from rclpy.executors import MultiThreadedExecutor
+from rclpy.serialization import serialize_message
 from system_interfaces.srv import GetConfig, StartDataCollection, StopDataCollection, Logging
-# from core_bases.component_node import ComponentNode
+from core_bases.component_node import ComponentNode
 
-## TODO: dummy topic_writer replaced with Robo-DM API. 
-
-class DataCollector(Node):
+class DataCollector(ComponentNode):
     """Node responsible for collecting and recording demonstration data"""
     
-    def __init__(self):
-        super().__init__("data_collector")
-        self.layer_cn_id = 'data_collector'
+    def __init__(self, layer_cn_id: str = 'data_collector', ros2_domain_id: int = None):
+        super().__init__(layer_cn_id, ros2_domain_id)
 
-        # Initialize clients
-        self._create_clients()
-
-        # Initialize services
-        self._create_services()
+        # Configuration data
+        self.demo_config = None
+        self.data_stream_config = None
+        self.to_collect_topics = []
+        self.topic_metadata = {}
         
         # State tracking
         self.active_collections = {}
-        self.subscribers = {}
-        self.topic_writers = {}
+        self.collection_subscribers = {}  # {demo_id: {topic_id: subscriber}}
+        self.collection_log_files = {}    # {demo_id: {topic_id: file_handle}}
         
         # Default configuration
         self.demo_root_path = "/tmp/demos"
         self.supported_formats = ['rosbag2', 'hdf5', 'vla']
         self.supported_codecs = ['h264', 'h265']
-        
-        self.get_logger().info('DataCollector node initialized successfully')
-        
-    def _create_clients(self):
-        """Create service clients"""
-        self.get_config_client = self.create_client(GetConfig, 'get_config')
-        self.logging_client = self.create_client(Logging, 'logging')
-        
-        # Wait for SystemManager to be available
-        self.get_logger().info('Waiting for SystemManager services...')
-        self.get_config_client.wait_for_service(timeout_sec=10.0)
-        self.logging_client.wait_for_service(timeout_sec=10.0)
-        self.get_logger().info('Connected to SystemManager services')
-        
 
-    def _create_services(self):
-        """Create services provided by this node"""
+
+        # Initialize the node
+        self._initialize_node()
+        
+        self.srv_callback_group = ReentrantCallbackGroup()
+
+        # Service servers
         self.start_data_collection_srv = self.create_service(
             StartDataCollection, 'start_data_collection', 
-            self.start_data_collection_srv_callback)
+            self.start_data_collection_srv_callback, callback_group=self.srv_callback_group)
             
         self.stop_data_collection_srv = self.create_service(
             StopDataCollection, 'stop_data_collection', 
-            self.stop_data_collection_srv_callback)
-            
-    def _log_to_system(self, level, message):
-        """Send log message to SystemManager"""
-        if self.logging_client.service_is_ready():
-            request = Logging.Request()
-            request.layer_cn_id = self.layer_cn_id
-            request.log_level = level
-            request.message = message
-            request.timestamp = self.get_clock().now().to_msg()
-            
-            future = self.logging_client.call_async(request)
-            # Note: Not waiting for response to avoid blocking
+            self.stop_data_collection_srv_callback, callback_group=self.srv_callback_group)
         
+        
+        self.get_logger().info('DataCollector node initialized successfully')
+        
+    def _load_root_configs(self):
+        """Load root configuration files needed by this component"""
+
+        self._get_demo_config()
+
+        # Load data stream configuration
+        self.data_stream_config = self.load_data_stream_config()
+        if not self.data_stream_config:
+            self.get_logger().error("Failed to load data stream configuration")
+            return False
+            
+        # Parse topics to collect from demo config
+        self.to_collect_topics = self.demo_config.get('topics', [])
+        self.get_logger().info(f"Topics to collect: {self.to_collect_topics}")
+        
+        # Parse topic metadata from data stream config
+        self._parse_topic_metadata()
+        
+        return True
+        
+    def _get_demo_config(self):
+
+        # Load demo configuration
+        self.demo_config = self.load_demo_config()
+        if not self.demo_config:
+            self.get_logger().error("Failed to load demo configuration")
+            return False
+
+
+    def _parse_topic_metadata(self):
+        """Parse topic metadata from data stream configuration"""
+        self.topic_metadata = {}
+        
+        if 'topics' not in self.data_stream_config:
+            self.get_logger().warn("No topics found in data stream configuration")
+            return
+            
+        for topic_config in self.data_stream_config['topics']:
+            topic_id = topic_config['id']
+            self.topic_metadata[topic_id] = {
+                'msg_type': topic_config['msg_type'],
+                'publish_freq': topic_config.get('publish_freq', 30.0),
+                'frame_id': topic_config.get('frame_id', ''),
+                'shape': topic_config.get('shape', []),
+                'dtype': topic_config.get('dtype', 'float32'),
+                'encoding': topic_config.get('encoding', '')
+            }
+            
+        self.get_logger().info(f"Parsed metadata for {len(self.topic_metadata)} topics")
+
+
     def start_data_collection_srv_callback(self, request, response):
         """Handle start data collection requests"""
         try:
@@ -83,6 +118,7 @@ class DataCollector(Node):
                 response.success = False
                 response.topic_ids = []
                 response.storage_path = ""
+                response.start_time = Time()
                 self.get_logger().error("Demo ID cannot be empty")
                 return response
                 
@@ -95,75 +131,65 @@ class DataCollector(Node):
                 self.get_logger().warn(f"Demo {demo_id} is already being collected")
                 return response
                 
-            # Get demo configuration from SystemManager
-            demo_config = self._get_demo_config()
-            
             # Determine storage path
-            demo_root = request.demo_root_path.strip() if request.demo_root_path.strip() else \
-                       demo_config.get('demo_root_path', self.demo_root_path)
+
+            self._get_demo_config()
+
+            demo_root = self.demo_config.get('demo_root_path', self.demo_root_path)
             storage_path = os.path.join(demo_root, demo_id)
             
             # Create storage directory
             os.makedirs(storage_path, exist_ok=True)
             
-            # Determine topics to subscribe to
-            topics = self._determine_topics(request, demo_config)
-            
             # Validate storage format and codec
-            storage_format = request.storage_format or demo_config.get('storage_format', 'vla')
-            video_codec = request.video_codec or demo_config.get('video_codec', 'h264')
+            storage_format = self.demo_config.get('storage_format', 'vla')
+            video_codec = self.demo_config.get('video_codec', 'h264')
             
             if storage_format not in self.supported_formats:
-                self.get_logger().warn(f"Unsupported storage format {storage_format}, using rosbag2")
-                storage_format = 'rosbag2'
+                self.get_logger().warn(f"Unsupported storage format {storage_format}, using vla")
+                storage_format = 'vla'
                 
             if video_codec not in self.supported_codecs:
                 self.get_logger().warn(f"Unsupported video codec {video_codec}, using h264")
                 video_codec = 'h264'
             
-            # Register features with Robo-DM API
-            self._register_features(demo_id, topics)
+            # Subscribe to topics and create log files
+            topics = self.to_collect_topics
+            success = self._start_topic_collection(demo_id, topics, storage_path)
             
-            # Subscribe to topics
-            self._subscribe_topics(topics, demo_id, storage_path, storage_format)
+            if not success:
+                response.success = False
+                response.topic_ids = []
+                response.storage_path = ""
+                response.start_time = Time()
+                self.get_logger().error(f"Failed to start topic collection for {demo_id}")
+                return response
             
             # Create collection metadata
+            start_time = self.get_clock().now()
             collection_info = {
                 'demo_id': demo_id,
                 'storage_path': storage_path,
                 'topics': topics,
                 'storage_format': storage_format,
                 'video_codec': video_codec,
-                'description': request.description,
-                'start_time': self.get_clock().now(),
-                'message_count': {topic: 0 for topic in topics},
-                'total_size': 0
+                'start_time': start_time,
             }
-            
-            # # Save metadata file
-            # metadata_path = os.path.join(storage_path, 'collection_metadata.json')
-            # with open(metadata_path, 'w') as f:
-            #     json.dump({
-            #         'demo_id': demo_id,
-            #         'description': request.description,
-            #         'topics': topics,
-            #         'storage_format': storage_format,
-            #         'video_codec': video_codec,
-            #         'start_time': collection_info['start_time'].nanoseconds,
-            #         'created_by': 'data_collector'
-            #     }, f, indent=2)
             
             # Track active collection
             self.active_collections[demo_id] = collection_info
+            
+            # Save initial metadata
+            self._save_collection_metadata(collection_info, storage_path)
             
             # Prepare response
             response.success = True
             response.topic_ids = topics
             response.storage_path = storage_path
-            response.start_time = collection_info['start_time'].to_msg()
+            response.start_time = start_time.to_msg()
             
             # Log successful start
-            self._log_to_system('INFO', f"Started data collection for demo {demo_id} on {len(topics)} topics")
+            # self.logging(f"Started data collection for demo {demo_id} on {len(topics)} topics", 'INFO')
             self.get_logger().info(f"Data collection started: {demo_id} -> {storage_path}")
             
         except Exception as e:
@@ -173,7 +199,7 @@ class DataCollector(Node):
             response.start_time = Time()
             
             error_msg = f"Failed to start data collection for {demo_id}: {e}"
-            self._log_to_system('ERROR', error_msg)
+            # self.logging(error_msg, 'ERROR')
             self.get_logger().error(error_msg)
             
         return response
@@ -181,6 +207,7 @@ class DataCollector(Node):
     def stop_data_collection_srv_callback(self, request, response):
         """Handle stop data collection requests"""
         try:
+            self.get_logger().warn("Got stop data collection request!!!")
             demo_id = request.demo_id.strip()
             
             if not demo_id or demo_id not in self.active_collections:
@@ -199,8 +226,8 @@ class DataCollector(Node):
             end_time = self.get_clock().now()
             duration_ns = (end_time - start_time).nanoseconds
             
-            # Clean up subscribers for this demo
-            self._cleanup_demo_subscriptions(demo_id, collection_info)
+            # Stop topic collection and cleanup
+            self._stop_topic_collection(demo_id)
             
             # Update metadata with final statistics
             self._finalize_collection_metadata(collection_info, end_time)
@@ -208,8 +235,7 @@ class DataCollector(Node):
             # Prepare response
             response.success = True
             response.storage_path = collection_info['storage_path']
-            response.message = f"Data collection completed for demo {demo_id}. " \
-                              f"Collected {sum(collection_info['message_count'].values())} messages"
+            response.message = f"Data collection completed for demo {demo_id}. "
             
             # Set duration
             duration_msg = Duration()
@@ -219,10 +245,10 @@ class DataCollector(Node):
             
             # Log successful completion
             duration_sec = duration_ns / 1e9
-            self._log_to_system('INFO', 
-                f"Completed data collection for demo {demo_id}. "
-                f"Duration: {duration_sec:.2f}s, "
-                f"Messages: {sum(collection_info['message_count'].values())}")
+            # self.logging( 
+            #     f"Completed data collection for demo {demo_id}. "
+            #     f"Duration: {duration_sec:.2f}s, "
+            #     f"Messages: {sum(collection_info['message_count'].values())}", 'INFO')
             
             self.get_logger().info(f"Data collection completed: {demo_id} ({duration_sec:.2f}s)")
             
@@ -236,216 +262,201 @@ class DataCollector(Node):
             response.message = f"Failed to stop data collection: {e}"
             
             error_msg = f"Failed to stop data collection for {demo_id}: {e}"
-            self._log_to_system('ERROR', error_msg)
+            # self.logging(error_msg, 'ERROR')
             self.get_logger().error(error_msg)
             
         return response
         
-    def _get_demo_config(self):
-        """Get demo configuration from SystemManager"""
+    def _start_topic_collection(self, demo_id, topics, storage_path):
+        """Start collecting data from specified topics"""
         try:
-            if self.get_config_client.service_is_ready():
-                request = GetConfig.Request()
-                request.config_file_name = 'demo'
-                request.config_keys = []
-                
-                future = self.get_config_client.call_async(request)
-                rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
-                
-                if future.result() and future.result().success:
-                    return json.loads(future.result().config_data)
+            # Initialize storage for this demo
+            self.collection_subscribers[demo_id] = {}
+            self.collection_log_files[demo_id] = {}
+            self.topic_callback_group = ReentrantCallbackGroup()
+            
+            for topic_id in topics:
+                # Skip if no metadata available
+                if topic_id not in self.topic_metadata:
+                    self.get_logger().warn(f"No metadata found for topic {topic_id}, skipping")
+                    continue
                     
+                metadata = self.topic_metadata[topic_id]
+                msg_type_str = metadata['msg_type']
+                
+                # Skip image topics as requested
+                if 'Image' in msg_type_str or 'image' in topic_id.lower():
+                    self.get_logger().info(f"Skipping image topic: {topic_id}")
+                    continue
+                
+                try:
+                    # Resolve message type (using inherited method from ComponentNode)
+                    msg_type_class = self._resolve_msg_type(msg_type_str)
+                    
+                    # # Create QoS profile
+                    # qos_profile = QoSProfile(
+                    #     reliability=ReliabilityPolicy.BEST_EFFORT,
+                    #     durability=DurabilityPolicy.VOLATILE,
+                    #     depth=10
+                    # )
+                    
+                    # Create dynamic callback
+                    callback = self._create_topic_callback(demo_id, topic_id)
+                    
+                    ##NOTE
+                    # # Create subscriber
+                    # subscriber = self.create_subscription(
+                    #     msg_type_class, topic_id, callback, 10)
+                    
+                    # # Store subscriber
+                    # self.collection_subscribers[demo_id][topic_id] = subscriber
+                    self.collection_subscribers[demo_id][topic_id] = None
+                    
+                    # Create log file
+                    log_file_path = os.path.join(storage_path, f"{topic_id.replace('/', '_')}.log")
+                    log_file = open(log_file_path, 'w')
+                    self.collection_log_files[demo_id][topic_id] = log_file
+                    
+                    # Write header to log file
+                    header_info = {
+                        'topic_id': topic_id,
+                        'msg_type': msg_type_str,
+                        'metadata': metadata,
+                        'start_time': datetime.now().isoformat()
+                    }
+                    log_file.write(f"# HEADER: {json.dumps(header_info)}\n")
+                    log_file.flush()
+                    
+                    self.get_logger().info(f"Started collecting topic: {topic_id}")
+                    
+                except Exception as e:
+                    self.get_logger().error(f"Failed to setup collection for topic {topic_id}: {e}")
+                    
+            # return len(self.collection_subscribers[demo_id]) > 0
+            return True
+            
         except Exception as e:
-            self.get_logger().warn(f"Failed to get demo config: {e}")
-            
-        # Return default config
-        return {
-            'default_root_path': '/tmp/demos',
-            'default_storage_format': 'rosbag2',
-            'default_video_codec': 'h264',
-            'max_duration': 600
-        }
-        
-    def _determine_topics(self, request, demo_config):
-        """Determine which topics to record"""
-        if request.topic_ids:
-            return list(request.topic_ids)
-        
-        # Get default topics from config or use hardcoded defaults
-        default_topics = demo_config.get('topics', [
-            '/robot_state'
-        ])
-        
-        return default_topics
-        
-    def _register_features(self, demo_id, topics):
-        ## NOTE: dummy impl
-        """Register features with Robo-DM API (dummy implementation)"""
-        try:
-            # This would integrate with actual Robo-DM API
-            # For now, just create a feature registry file
-            feature_registry = {
-                'demo_id': demo_id,
-                'features': [],
-                'registration_time': datetime.now().isoformat()
-            }
-            
-            for topic in topics:
-                # Get metadata for topic from SystemManager
-                metadata = self._get_topic_metadata(topic)
-                
-                feature_info = {
-                    'topic_id': topic,
-                    'feature_type': metadata.get('topic_type', 'unknown'),
-                    'shape': metadata.get('shape', []),
-                    'frequency': metadata.get('frequency', 0.0),
-                    'registered': True
-                }
-                
-                feature_registry['features'].append(feature_info)
-                
-            self.get_logger().info(f"Registered {len(topics)} features for demo {demo_id}")
-            
-        except Exception as e:
-            self.get_logger().warn(f"Feature registration failed for {demo_id}: {e}")
-            
-    def _get_topic_metadata(self, topic):
-        ## NOTE: dummy impl
-        """Get metadata for a specific topic from SystemManager"""
-        # This would call a service to get topic metadata
-        # For now, return dummy metadata
-        dummy_metadata = {
-            '/hand_keypoints': {
-                'topic_type': 'component_interfaces/msg/RawHandKeypoint',
-                'shape': [21, 3],
-                'frequency': 30.0
-            },
-            '/robot_state': {
-                'topic_type': 'component_interfaces/msg/DexRobotState', 
-                'shape': [7],
-                'frequency': 100.0
-            },
-            '/camera/image_raw': {
-                'topic_type': 'component_interfaces/msg/Image',
-                'shape': [480, 640, 3],
-                'frequency': 30.0
-            },
-            '/joint_commands': {
-                'topic_type': 'component_interfaces/msg/JointAngles',
-                'shape': [7],
-                'frequency': 50.0
-            }
-        }
-        
-        return dummy_metadata.get(topic, {'topic_type': 'unknown', 'shape': [], 'frequency': 0.0})
-        
-    def _subscribe_topics(self, topics, demo_id, storage_path, storage_format):
-        """Subscribe to all specified topics for data collection"""
-        for topic in topics:
+            self.get_logger().error(f"Failed to start topic collection: {e}")
+            return False
+    
+    def _create_topic_callback(self, demo_id, topic_id):
+        """Create a dynamic callback for a specific topic"""
+        def topic_callback(msg):
             try:
-                # Create topic-specific callback
-                callback = self._make_callback(topic, demo_id, storage_path)
-                
-                # Create QoS profile (using sensor data profile for reliability)
-                qos_profile = QoSProfile(
-                    reliability=ReliabilityPolicy.BEST_EFFORT,
-                    durability=DurabilityPolicy.VOLATILE,
-                    depth=10
-                )
-                
-                # Create subscriber (using String as dummy message type)
-                subscriber = self.create_subscription(
-                    String, topic, callback, qos_profile)
+                if demo_id not in self.active_collections:
+                    return
+                                    
+                # Write to log file
+                if demo_id in self.collection_log_files and topic_id in self.collection_log_files[demo_id]:
+                    log_file = self.collection_log_files[demo_id][topic_id]
                     
-                # Store subscriber with unique key
-                subscriber_key = f"{demo_id}_{topic}"
-                self.subscribers[subscriber_key] = subscriber
-                
-                # Initialize topic writer for this demo
-                writer_key = f"{demo_id}_{topic}"
-                self.topic_writers[writer_key] = self._create_topic_writer(
-                    topic, storage_path, storage_format)
+                    # Create log entry
+                    timestamp = self.get_clock().now()
+                    log_entry = {
+                        'timestamp': timestamp.nanoseconds,
+                        'data': self._serialize_message_for_logging(msg)
+                    }
                     
-                self.get_logger().debug(f"Subscribed to {topic} for demo {demo_id}")
+                    # Write to file
+                    log_file.write(f"{json.dumps(log_entry)}\n")
+                    log_file.flush()
                 
             except Exception as e:
-                self.get_logger().error(f"Failed to subscribe to {topic} for demo {demo_id}: {e}")
+                self.get_logger().error(f"Error in callback for {demo_id}/{topic_id}: {e}")
                 
-    def _make_callback(self, topic_id, demo_id, storage_path):
-        """Create callback function for a specific topic"""
-        def callback(msg):
-            self.topic_callback(msg, topic_id, demo_id, storage_path)
-        return callback
-        
-    def topic_callback(self, msg, topic_id, demo_id, storage_path):
-        """Handle incoming topic messages during data collection"""
+        return topic_callback
+    
+    def _serialize_message_for_logging(self, msg):
+        """Convert ROS message to loggable format"""
         try:
-            if demo_id not in self.active_collections:
-                self.get_logger().warn(f"Received message for inactive demo: {demo_id}")
-                return
+            # Handle common message types
+            if hasattr(msg, 'data'):
+                return {'data': msg.data}
+            elif hasattr(msg, 'position') and hasattr(msg, 'orientation'):
+                # Pose-like messages
+                return {
+                    'position': {'x': msg.position.x, 'y': msg.position.y, 'z': msg.position.z},
+                    'orientation': {'x': msg.orientation.x, 'y': msg.orientation.y, 'z': msg.orientation.z, 'w': msg.orientation.w}
+                }
+            elif hasattr(msg, 'joint_angles'):
+                # Joint angles
+                return {'joint_angles': list(msg.joint_angles)}
+            elif hasattr(msg, 'keypoints'):
+                # Hand keypoints
+                return {'keypoints': [{'x': kp.x, 'y': kp.y, 'z': kp.z} for kp in msg.keypoints]}
+            else:
+                # Generic approach - convert to dict representation
+                msg_dict = {}
+                for field_name, field_type in msg.get_fields_and_field_types().items():
+                    if hasattr(msg, field_name):
+                        value = getattr(msg, field_name)
+                        # Handle arrays/lists
+                        if isinstance(value, (list, tuple)):
+                            if len(value) > 0 and hasattr(value[0], '__dict__'):
+                                # List of objects
+                                msg_dict[field_name] = [self._serialize_message_for_logging(v) for v in value]
+                            else:
+                                # List of primitives
+                                msg_dict[field_name] = list(value)
+                        elif hasattr(value, '__dict__'):
+                            # Nested message
+                            msg_dict[field_name] = self._serialize_message_for_logging(value)
+                        else:
+                            # Primitive type
+                            msg_dict[field_name] = value
+                            
+                return msg_dict
                 
-            # Update message count
-            self.active_collections[demo_id]['message_count'][topic_id] += 1
-            
-            # Write message to storage
-            writer_key = f"{demo_id}_{topic_id}"
-            if writer_key in self.topic_writers:
-                self.topic_writers[writer_key].write_message(msg)
-                
-            # Log periodic status (every 100 messages per topic)
-            msg_count = self.active_collections[demo_id]['message_count'][topic_id]
-            if msg_count % 100 == 0:
-                self.get_logger().debug(
-                    f"Demo {demo_id}, Topic {topic_id}: {msg_count} messages recorded")
-                    
         except Exception as e:
-            self.get_logger().error(f"Error processing message for {demo_id}/{topic_id}: {e}")
+            self.get_logger().warn(f"Failed to serialize message: {e}")
+            return {'error': 'serialization_failed', 'message_type': str(type(msg))}
+    
+    def _stop_topic_collection(self, demo_id):
+        """Stop collecting data for a demo and cleanup resources"""
+        try:
+            ##NOTE
+            # # Destroy subscribers
+            # if demo_id in self.collection_subscribers:
+            #     for topic_id, subscriber in self.collection_subscribers[demo_id].items():
+            #         self.destroy_subscription(subscriber)
+            #         self.get_logger().debug(f"Destroyed subscriber for {topic_id}")
+            #     del self.collection_subscribers[demo_id]
             
-    def _create_topic_writer(self, topic, storage_path, storage_format):
-        """Create a writer for a specific topic (dummy implementation)"""
-        class DummyTopicWriter:
-            def __init__(self, topic, path, format_type):
-                self.topic = topic
-                self.path = path
-                self.format = format_type
-                self.message_count = 0
+            # Close log files
+            if demo_id in self.collection_log_files:
+                for topic_id, log_file in self.collection_log_files[demo_id].items():
+                    try:
+                        log_file.close()
+                        self.get_logger().debug(f"Closed log file for {topic_id}")
+                    except Exception as e:
+                        self.get_logger().warn(f"Error closing log file for {topic_id}: {e}")
+                del self.collection_log_files[demo_id]
                 
-                # Create topic-specific file
-                safe_topic_name = topic.replace('/', '_')
-                self.file_path = os.path.join(path, f"{safe_topic_name}.{format_type}")
+            self.get_logger().info(f"Cleaned up collection resources for demo {demo_id}")
+            
+        except Exception as e:
+            self.get_logger().error(f"Error during collection cleanup: {e}")
+    
+    def _save_collection_metadata(self, collection_info, storage_path):
+        """Save collection metadata to file"""
+        try:
+            metadata_path = os.path.join(storage_path, 'collection_metadata.json')
+            
+            metadata = {
+                'demo_id': collection_info['demo_id'],
+                'topics': collection_info['topics'],
+                'storage_format': collection_info['storage_format'],
+                'video_codec': collection_info['video_codec'],
+                'start_time': collection_info['start_time'].nanoseconds,
+                'created_by': 'data_collector'
+            }
+            
+            with open(metadata_path, 'w') as f:
+                json.dump(metadata, f, indent=2)
                 
-            def write_message(self, msg):
-                # Dummy implementation - in real scenario, this would serialize and write message
-                self.message_count += 1
-                
-                # Write to a simple text log for demonstration
-                try:
-                    with open(self.file_path, 'a') as f:
-                        f.write(f"[{datetime.now().isoformat()}] Message {self.message_count}: {msg.data}\n")
-                except Exception as e:
-                    pass  # Silent fail for demo
-                    
-        return DummyTopicWriter(topic, storage_path, storage_format)
-        
-    def _cleanup_demo_subscriptions(self, demo_id, collection_info):
-        """Clean up all subscriptions for a completed demo"""
-        for topic in collection_info['topics']:
-            # Clean up subscriber
-            subscriber_key = f"{demo_id}_{topic}"
-            if subscriber_key in self.subscribers:
-                self.destroy_subscription(self.subscribers[subscriber_key])
-                del self.subscribers[subscriber_key]
-                
-            # Clean up topic writer
-            writer_key = f"{demo_id}_{topic}"
-            if writer_key in self.topic_writers:
-                # Finalize and close writer
-                writer = self.topic_writers[writer_key]
-                # In real implementation, call writer.close() or similar
-                del self.topic_writers[writer_key]
-                
-        self.get_logger().debug(f"Cleaned up subscriptions for demo {demo_id}")
-        
+        except Exception as e:
+            self.get_logger().error(f"Failed to save metadata: {e}")
+            
     def _finalize_collection_metadata(self, collection_info, end_time):
         """Update collection metadata with final statistics"""
         try:
@@ -453,19 +464,15 @@ class DataCollector(Node):
             
             # Calculate final statistics
             duration_ns = (end_time - collection_info['start_time']).nanoseconds
-            total_messages = sum(collection_info['message_count'].values())
             
             final_metadata = {
                 'demo_id': collection_info['demo_id'],
-                'description': collection_info['description'],
                 'topics': collection_info['topics'],
                 'storage_format': collection_info['storage_format'],
                 'video_codec': collection_info['video_codec'],
                 'start_time': collection_info['start_time'].nanoseconds,
                 'end_time': end_time.nanoseconds,
                 'duration_seconds': duration_ns / 1e9,
-                'total_messages': total_messages,
-                'message_count_per_topic': collection_info['message_count'],
                 'created_by': 'data_collector',
                 'finalized_at': datetime.now().isoformat()
             }
@@ -475,7 +482,71 @@ class DataCollector(Node):
                 
         except Exception as e:
             self.get_logger().error(f"Failed to finalize metadata: {e}")
+    
+    # Abstract methods implementation
+    def register_pub_sub(self):
+        """Register publishers and subscribers (not needed for data collector)"""
+        # Data collector creates subscribers dynamically, so no static pub/sub setup needed
+        pass
+    
+    def register_timer(self):
+        """Register timer for publishers (not needed for data collector)"""
+        # Data collector doesn't need periodic publishing
+        pass
+
+    def urgent_stop(self):
+        """Emergency stop triggered by SystemManager"""
+        self.get_logger().warn("URGENT STOP called on DataCollector")
+        
+        try:
+            # Stop all active collections
+            active_demos = list(self.active_collections.keys())
+            for demo_id in active_demos:
+                self.get_logger().warn(f"Force stopping collection: {demo_id}")
+                self._stop_topic_collection(demo_id)
+                
+                # Save emergency metadata
+                if demo_id in self.active_collections:
+                    collection_info = self.active_collections[demo_id]
+                    end_time = self.get_clock().now()
+                    self._finalize_collection_metadata(collection_info, end_time)
+                    
+            # Clear all collections
+            self.active_collections.clear()
+            self.collection_subscribers.clear()
+            self.collection_log_files.clear()
             
+            # Call parent stop
+            self.stop_component()
+            
+            self.get_logger().warn("DataCollector emergency stop completed")
+            
+        except Exception as e:
+            self.get_logger().error(f"Error during urgent stop: {e}")
+
+    def _load_my_config(self):
+        """Load the component plugin configuration"""
+        # Load component-specific config if needed
+        component_config = self.load_my_config()
+        if component_config:
+            self.get_logger().info("Loaded component-specific configuration")
+            return component_config
+        return {}
+
+    def check_plugins(self):
+        """Verify that plugins implement required interfaces."""
+        # For data collector, verify configs are loaded properly
+        if not self.demo_config or not self.data_stream_config:
+            self.get_logger().error("Required configurations not loaded")
+            return False
+            
+        if not self.to_collect_topics:
+            self.get_logger().warn("No topics configured for collection")
+            return False
+            
+        self.get_logger().info("DataCollector plugins check passed")
+        return True
+    
     def get_active_collections(self):
         """Return information about currently active collections"""
         return {demo_id: {
@@ -483,30 +554,47 @@ class DataCollector(Node):
             'storage_path': info['storage_path'],
             'topics': info['topics'],
             'start_time': info['start_time'].nanoseconds,
-            'message_counts': info['message_count']
         } for demo_id, info in self.active_collections.items()}
 
-
 def main(args=None):
-    """Main entry point for DataCollector node"""
     rclpy.init(args=args)
-    
-    try:
-        node = DataCollector()
-        node.get_logger().info("DataCollector node initialized, spinning...")
-        rclpy.spin(node)
-        
-    except KeyboardInterrupt:
-        node.get_logger().info("DataCollector node interrupted by user")
-    except Exception as e:
-        if 'node' in locals():
-            node.get_logger().error(f"DataCollector node error: {e}")
-    finally:
-        if 'node' in locals():
-            node.destroy_node()
-        rclpy.shutdown()
-        print("DataCollector node shutdown complete")
 
+    layer_cn_id = 'data_collector'
+    ros2_domain_id = 0
+
+    if args:
+        # Parse custom arguments
+        for i, arg in enumerate(args):
+            if arg == "--layer_cn_id" and i + 1 < len(args):
+                layer_cn_id = args[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(args):
+                ros2_domain_id = int(args[i + 1])
+    else:
+        # If no args provided, try to get from sys.argv
+        for i, arg in enumerate(sys.argv):
+            if arg == "--layer_cn_id" and i + 1 < len(sys.argv):
+                layer_cn_id = sys.argv[i + 1]
+            elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
+                ros2_domain_id = int(sys.argv[i + 1])
+
+    # Create node instance
+    node = DataCollector(layer_cn_id=layer_cn_id, ros2_domain_id=ros2_domain_id)
+
+    try:
+        node.logging(f"DataCollection node started with layer_cn_id: {layer_cn_id}", "INFO")
+
+        executor = MultiThreadedExecutor()
+        executor.add_node(node)
+        executor.spin()
+
+    except KeyboardInterrupt:
+        node.logging("Keyboard interrupt received", "INFO")
+    except Exception as e:
+        node.logging(f"Unexpected error: {str(e)}", "ERROR")
+    finally:
+        node.urgent_stop()
+        node.destroy_node()
+        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()
