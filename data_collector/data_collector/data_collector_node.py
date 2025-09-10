@@ -56,7 +56,28 @@ class DataCollector(ComponentNode):
         
         
         self.get_logger().info('DataCollector node initialized successfully')
+    
+    def _initialize_node(self):
+        self.get_logger().info(f"Initializing: {self.layer_cn_id}")
         
+        # Register publishers and subscribers
+        self._load_root_configs() # definded in the child node
+        # self.register_pub_sub() # definded in the bottom node
+        # self.register_latency_sub_pub() # definded in this node
+        
+        # Verify plugins
+        if self.check_plugins():
+            self.set_state("ready")
+            self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
+            # Publish initial status
+            self._publish_status()
+        else:
+            self.set_state("disconnected")
+            self.get_logger().warn(f"{self.layer_cn_id} initialization failed")
+            # Publish error status
+            self._publish_status()
+
+
     def _load_root_configs(self):
         """Load root configuration files needed by this component"""
 
@@ -77,6 +98,7 @@ class DataCollector(ComponentNode):
         
         return True
         
+    ## BUG: make it async!!!!
     def _get_demo_config(self):
 
         # Load demo configuration
@@ -84,7 +106,6 @@ class DataCollector(ComponentNode):
         if not self.demo_config:
             self.get_logger().error("Failed to load demo configuration")
             return False
-
 
     def _parse_topic_metadata(self):
         """Parse topic metadata from data stream configuration"""
@@ -133,7 +154,8 @@ class DataCollector(ComponentNode):
                 
             # Determine storage path
 
-            self._get_demo_config()
+            ## BUG: make it async!!!!
+            # self._get_demo_config()
 
             demo_root = self.demo_config.get('demo_root_path', self.demo_root_path)
             storage_path = os.path.join(demo_root, demo_id)

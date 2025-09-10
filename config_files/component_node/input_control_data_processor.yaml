@@ -18,7 +18,7 @@ plugins:
     priority: 1
     params: # for node with plugin initialization
       frequency: 1
-      simulate_latency: 100
+      # simulate_latency: 100
 
 
   # - id: fish_eye_driver
