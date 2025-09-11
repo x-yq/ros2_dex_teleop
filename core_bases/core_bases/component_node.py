@@ -16,8 +16,7 @@ import time
 import importlib
 import subprocess
 from rclpy.serialization import serialize_message
-
-
+import asyncio
 
 class ComponentNode(Node, ABC):
     """
@@ -40,8 +39,8 @@ class ComponentNode(Node, ABC):
         self.compo_srv_callback_group = ReentrantCallbackGroup()
 
         # Clients to SystemManager
-        self.logging_client = self.create_client(Logging, "logging", callback_group=self.compo_client_callback_group)
-        self.get_config_client = self.create_client(GetConfig, "get_config", callback_group= self.compo_client_callback_group)
+        self.logging_client = self.create_client(Logging, "logging") #, callback_group=self.compo_client_callback_group)
+        self.get_config_client = self.create_client(GetConfig, "get_config") #, callback_group= self.compo_client_callback_group)
 
         
         # Latency test
@@ -261,7 +260,7 @@ class ComponentNode(Node, ABC):
         self.get_logger().info("All SystemManager services available")
 
 
-    def get_config(self, config_file_name: str, config_keys: Optional[List[str]] = None):
+    async def get_config(self, config_file_name: str, config_keys: Optional[List[str]] = None):
         """Fetch config data from SystemManager."""
         req = GetConfig.Request()
         req.layer_cn_id = self.layer_cn_id
@@ -269,14 +268,17 @@ class ComponentNode(Node, ABC):
         req.config_keys = config_keys if config_keys else []
 
         future = self.get_config_client.call_async(req)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        # await future
+
+        rclpy.spin_until_future_complete(self, future)
 
         if future.result() and future.result().success:
             self.get_logger().info(f"Config received from {config_file_name}")
-            return future.result().config_data  # JSON/YAML string
+            return future.result().config_data
         else:
             self.get_logger().error(f"Failed to get config: {future.result().message if future.result() else 'unknown error'}")
             return None
+        # return future
 
     # NOTE: API
     def logging(self, msg: str, log_level: str = "INFO"):
@@ -556,7 +558,30 @@ class ComponentNode(Node, ABC):
             Dictionary containing calibration data or None if failed
         """
         try:
-            config_data_str = self.get_config("calibration", config_keys)
+            config_data_str = asyncio.run(self.get_config("calibration", config_keys))
+            if config_data_str:
+                config_data = json.loads(config_data_str)
+                self.get_logger().info(f"Loaded calibration config for {self.layer_cn_id}")
+                return config_data
+            return None
+        except Exception as e:
+            self.get_logger().error(f"Failed to load calibration config: {e}")
+            return None
+    
+    def load_calibration_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
+        """
+        Load calibration configuration containing transform matrices and frame definitions.
+        
+        Args:
+            config_keys: Specific keys to retrieve. If None, returns entire config.
+                        Available keys: 'frame_ids', 'general_calibration_transforms', 
+                        'scenario_0_transforms', 'scenario_1_transforms', 'scenario_2_transforms'
+        
+        Returns:
+            Dictionary containing calibration data or None if failed
+        """
+        try:
+            config_data_str = asyncio.run(self.get_config("calibration", config_keys))
             if config_data_str:
                 config_data = json.loads(config_data_str)
                 self.get_logger().info(f"Loaded calibration config for {self.layer_cn_id}")
@@ -578,7 +603,7 @@ class ComponentNode(Node, ABC):
             Dictionary containing data stream configuration or None if failed
         """
         try:
-            config_data_str = self.get_config("data_stream", config_keys)
+            config_data_str = asyncio.run(self.get_config("data_stream", config_keys))
             if config_data_str:
                 config_data = json.loads(config_data_str)
                 self.get_logger().info(f"Loaded data stream config for {self.layer_cn_id}")
@@ -600,7 +625,7 @@ class ComponentNode(Node, ABC):
             Dictionary containing hardware configuration or None if failed
         """
         try:
-            config_data_str = self.get_config("hardware", config_keys)
+            config_data_str = asyncio.run(self.get_config("hardware", config_keys))
             if config_data_str:
                 config_data = json.loads(config_data_str)
                 self.get_logger().info(f"Loaded hardware config for {self.layer_cn_id}")
@@ -622,7 +647,7 @@ class ComponentNode(Node, ABC):
             Dictionary containing container configuration or None if failed
         """
         try:
-            config_data_str = self.get_config("container", config_keys)
+            config_data_str = asyncio.run(self.get_config("container", config_keys))
             if config_data_str:
                 config_data = json.loads(config_data_str)
                 self.get_logger().info(f"Loaded container config for {self.layer_cn_id}")
@@ -644,7 +669,7 @@ class ComponentNode(Node, ABC):
             Dictionary containing ROS2 configuration or None if failed
         """
         try:
-            config_data_str = self.get_config("ros2", config_keys)
+            config_data_str = asyncio.run(self.get_config("ros2", config_keys))
             if config_data_str:
                 config_data = json.loads(config_data_str)
                 self.get_logger().info(f"Loaded ROS2 config for {self.layer_cn_id}")
@@ -660,14 +685,13 @@ class ComponentNode(Node, ABC):
         
         Args:
             config_keys: Specific keys to retrieve. If None, returns entire config.
-                        Available keys: 'demo_id', 'demo_root_path', 'description', 
-                        'topics', 'video_codec', 'storage_format'
+                        Available keys: 'demo_id'
         
         Returns:
             Dictionary containing demo configuration or None if failed
         """
         try:
-            config_data_str = self.get_config("demo", config_keys)
+            config_data_str = asyncio.run(self.get_config("demo", config_keys))
             if config_data_str:
                 config_data = json.loads(config_data_str)
                 self.get_logger().info(f"Loaded demo config for {self.layer_cn_id}")
@@ -697,11 +721,11 @@ class ComponentNode(Node, ABC):
             target_component = component_name or self.layer_cn_id
             
             # Try direct component name first
-            config_data_str = self.get_config(f"component_node.{target_component}", config_keys)
+            config_data_str = asyncio.run(self.get_config(f"component_node.{target_component}", config_keys))
             
             # If direct access fails, try accessing through component_node group
             if not config_data_str:
-                component_node_config = self.get_config("component_node")
+                component_node_config = asyncio.run(self.get_config("component_node"))
                 if component_node_config:
                     all_components = json.loads(component_node_config)
                     if target_component in all_components:

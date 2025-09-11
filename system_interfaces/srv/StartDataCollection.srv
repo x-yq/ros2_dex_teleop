@@ -1,5 +1,9 @@
 # Request
 string demo_id
+string demo_root_path
+string[] topics
+string video_codec
+string storage_format
 ---
 # Response
 bool success

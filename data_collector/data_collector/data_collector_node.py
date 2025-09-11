@@ -24,10 +24,11 @@ class DataCollector(ComponentNode):
         super().__init__(layer_cn_id, ros2_domain_id)
 
         # Configuration data
-        self.demo_config = None
-        self.data_stream_config = None
-        self.to_collect_topics = []
+        self.demo_config = {}
+        self.data_stream_config = {}
+        self.init_topics = []
         self.topic_metadata = {}
+        self.init_demo_id = ''
         
         # State tracking
         self.active_collections = {}
@@ -56,32 +57,67 @@ class DataCollector(ComponentNode):
         
         
         self.get_logger().info('DataCollector node initialized successfully')
-    
-    def _initialize_node(self):
-        self.get_logger().info(f"Initializing: {self.layer_cn_id}")
+
+
+    def _update_demo_config(self, request):
+        """Update or create demo configuration based on the request.
         
-        # Register publishers and subscribers
-        self._load_root_configs() # definded in the child node
-        # self.register_pub_sub() # definded in the bottom node
-        # self.register_latency_sub_pub() # definded in this node
+        If the demo_id doesn't exist in config, create a new entry using request values.
+        If request attributes are empty, use values from the initial demo config.
+        If demo_id exists, update only the non-empty attributes from the request.
+        """
+        demo_id = request.demo_id
         
-        # Verify plugins
-        if self.check_plugins():
-            self.set_state("ready")
-            self.get_logger().info(f"{self.layer_cn_id} initialized successfully")
-            # Publish initial status
-            self._publish_status()
+        if demo_id not in self.demo_config:
+            self.get_logger().info(f"Registering new demo config for: {demo_id}")
+            
+            # Create new config entry, using request values or fallback to init_demo_id config
+            new_config = {}
+            
+            # Use request values if provided, otherwise use init_demo_id config values
+            new_config['demo_id'] = demo_id
+            new_config['demo_root_path'] = request.demo_root_path if request.demo_root_path else self.demo_config[self.init_demo_id].get('demo_root_path', self.demo_root_path)
+            new_config['topics'] = list(request.topics) if request.topics else self.demo_config[self.init_demo_id].get('topics', [])
+            new_config['video_codec'] = request.video_codec if request.video_codec else self.demo_config[self.init_demo_id].get('video_codec', 'h264')
+            new_config['storage_format'] = request.storage_format if request.storage_format else self.demo_config[self.init_demo_id].get('storage_format', 'vla')
+            
+            # Store the new config
+            self.demo_config[demo_id] = new_config
+            
+            self.get_logger().info(f"Created new config for demo {demo_id}: {new_config}")
+            
         else:
-            self.set_state("disconnected")
-            self.get_logger().warn(f"{self.layer_cn_id} initialization failed")
-            # Publish error status
-            self._publish_status()
-
-
+            self.get_logger().info(f"Updating existing demo config for: {demo_id}")
+            
+            # Update only the non-empty attributes from the request
+            current_config = self.demo_config[demo_id]
+            
+            if request.demo_root_path:
+                current_config['demo_root_path'] = request.demo_root_path
+                self.get_logger().debug(f"Updated demo_root_path to: {request.demo_root_path}")
+                
+            if request.topics:
+                current_config['topics'] = list(request.topics)
+                self.get_logger().debug(f"Updated topics to: {request.topics}")
+                
+            if request.video_codec:
+                current_config['video_codec'] = request.video_codec
+                self.get_logger().debug(f"Updated video_codec to: {request.video_codec}")
+                
+            if request.storage_format:
+                current_config['storage_format'] = request.storage_format
+                self.get_logger().debug(f"Updated storage_format to: {request.storage_format}")
+            
+            self.get_logger().info(f"Updated config for demo {demo_id}: {current_config}")
+            
     def _load_root_configs(self):
         """Load root configuration files needed by this component"""
 
-        self._get_demo_config()
+        # Load demo configuration
+        demo_config = self.load_demo_config()
+        if not demo_config:
+            self.get_logger().error("Failed to load demo configuration")
+            return False
 
         # Load data stream configuration
         self.data_stream_config = self.load_data_stream_config()
@@ -89,23 +125,16 @@ class DataCollector(ComponentNode):
             self.get_logger().error("Failed to load data stream configuration")
             return False
             
-        # Parse topics to collect from demo config
-        self.to_collect_topics = self.demo_config.get('topics', [])
-        self.get_logger().info(f"Topics to collect: {self.to_collect_topics}")
+        # Parse topics to collect from demo confi
+        self.init_demo_id = self.demo_config.get('demo_id', "demo")
+        self.demo_config[self.init_demo_id] = demo_config
+        self.init_topics = demo_config.get('topics', [])
+        self.get_logger().info(f"Topics to collect: {self.init_topics}")
         
         # Parse topic metadata from data stream config
         self._parse_topic_metadata()
         
         return True
-        
-    ## BUG: make it async!!!!
-    def _get_demo_config(self):
-
-        # Load demo configuration
-        self.demo_config = self.load_demo_config()
-        if not self.demo_config:
-            self.get_logger().error("Failed to load demo configuration")
-            return False
 
     def _parse_topic_metadata(self):
         """Parse topic metadata from data stream configuration"""
@@ -156,16 +185,17 @@ class DataCollector(ComponentNode):
 
             ## BUG: make it async!!!!
             # self._get_demo_config()
+            self._update_demo_config(request)
 
-            demo_root = self.demo_config.get('demo_root_path', self.demo_root_path)
+            demo_root = self.demo_config[demo_id].get('demo_root_path', self.demo_root_path)
             storage_path = os.path.join(demo_root, demo_id)
             
             # Create storage directory
             os.makedirs(storage_path, exist_ok=True)
             
             # Validate storage format and codec
-            storage_format = self.demo_config.get('storage_format', 'vla')
-            video_codec = self.demo_config.get('video_codec', 'h264')
+            storage_format = self.demo_config[demo_id].get('storage_format', 'vla')
+            video_codec = self.demo_config[demo_id].get('video_codec', 'h264')
             
             if storage_format not in self.supported_formats:
                 self.get_logger().warn(f"Unsupported storage format {storage_format}, using vla")
@@ -176,7 +206,7 @@ class DataCollector(ComponentNode):
                 video_codec = 'h264'
             
             # Subscribe to topics and create log files
-            topics = self.to_collect_topics
+            topics = self.demo_config[demo_id].get('topics', self.init_topics)
             success = self._start_topic_collection(demo_id, topics, storage_path)
             
             if not success:
@@ -298,6 +328,7 @@ class DataCollector(ComponentNode):
             self.topic_callback_group = ReentrantCallbackGroup()
             
             for topic_id in topics:
+                topic_id = topic_id.replace('/', '')
                 # Skip if no metadata available
                 if topic_id not in self.topic_metadata:
                     self.get_logger().warn(f"No metadata found for topic {topic_id}, skipping")
@@ -326,13 +357,13 @@ class DataCollector(ComponentNode):
                     callback = self._create_topic_callback(demo_id, topic_id)
                     
                     ##NOTE
-                    # # Create subscriber
-                    # subscriber = self.create_subscription(
-                    #     msg_type_class, topic_id, callback, 10)
+                    # Create subscriber
+                    subscriber = self.create_subscription(
+                        msg_type_class, topic_id, callback, 10)
                     
-                    # # Store subscriber
-                    # self.collection_subscribers[demo_id][topic_id] = subscriber
-                    self.collection_subscribers[demo_id][topic_id] = None
+                    # Store subscriber
+                    self.collection_subscribers[demo_id][topic_id] = subscriber
+                    # self.collection_subscribers[demo_id][topic_id] = None
                     
                     # Create log file
                     log_file_path = os.path.join(storage_path, f"{topic_id.replace('/', '_')}.log")
@@ -354,8 +385,8 @@ class DataCollector(ComponentNode):
                 except Exception as e:
                     self.get_logger().error(f"Failed to setup collection for topic {topic_id}: {e}")
                     
-            # return len(self.collection_subscribers[demo_id]) > 0
-            return True
+            return len(self.collection_subscribers[demo_id]) > 0
+            # return True
             
         except Exception as e:
             self.get_logger().error(f"Failed to start topic collection: {e}")
@@ -369,6 +400,7 @@ class DataCollector(ComponentNode):
                     return
                                     
                 # Write to log file
+                ##NOTE: Dummy method
                 if demo_id in self.collection_log_files and topic_id in self.collection_log_files[demo_id]:
                     log_file = self.collection_log_files[demo_id][topic_id]
                     
@@ -387,62 +419,153 @@ class DataCollector(ComponentNode):
                 self.get_logger().error(f"Error in callback for {demo_id}/{topic_id}: {e}")
                 
         return topic_callback
-    
+
     def _serialize_message_for_logging(self, msg):
-        """Convert ROS message to loggable format"""
+        ##NOTE: turn to dynamic. Dummy method
+        """Convert ROS message to loggable format, handling Header objects"""
         try:
-            # Handle common message types
-            if hasattr(msg, 'data'):
-                return {'data': msg.data}
-            elif hasattr(msg, 'position') and hasattr(msg, 'orientation'):
-                # Pose-like messages
-                return {
-                    'position': {'x': msg.position.x, 'y': msg.position.y, 'z': msg.position.z},
-                    'orientation': {'x': msg.orientation.x, 'y': msg.orientation.y, 'z': msg.orientation.z, 'w': msg.orientation.w}
+            # Handle specific message types based on their structure
+            if hasattr(msg, 'header'):
+                # Start with basic header info (convert to dict to avoid serialization issues)
+                result = {
+                    'header': {
+                        'stamp': {
+                            'sec': msg.header.stamp.sec,
+                            'nanosec': msg.header.stamp.nanosec
+                        },
+                        'frame_id': msg.header.frame_id
+                    }
                 }
-            elif hasattr(msg, 'joint_angles'):
-                # Joint angles
-                return {'joint_angles': list(msg.joint_angles)}
-            elif hasattr(msg, 'keypoints'):
-                # Hand keypoints
-                return {'keypoints': [{'x': kp.x, 'y': kp.y, 'z': kp.z} for kp in msg.keypoints]}
+                
+                # Handle JointAngles message
+                if hasattr(msg, 'joint_angles') and hasattr(msg, 'joint_names'):
+                    result.update({
+                        'send_id': msg.send_id,
+                        'robot_id': msg.robot_id,
+                        'joint_names': list(msg.joint_names),
+                        'joint_angles': list(msg.joint_angles),
+                        'joint_velocities': list(msg.joint_velocities) if hasattr(msg, 'joint_velocities') else [],
+                        'joint_efforts': list(msg.joint_efforts) if hasattr(msg, 'joint_efforts') else [],
+                        'timeout': {
+                            'sec': msg.timeout.sec,
+                            'nanosec': msg.timeout.nanosec
+                        } if hasattr(msg, 'timeout') else None
+                    })
+                    
+                # Handle RobotState message
+                elif hasattr(msg, 'joint_states') and hasattr(msg, 'end_effector_pose'):
+                    result.update({
+                        'send_id': msg.send_id,
+                        'robot_id': msg.robot_id,
+                        'joint_names': list(msg.joint_names),
+                        'joint_states': {
+                            'name': list(msg.joint_states.name),
+                            'position': list(msg.joint_states.position),
+                            'velocity': list(msg.joint_states.velocity),
+                            'effort': list(msg.joint_states.effort)
+                        },
+                        'end_effector_pose': {
+                            'position': {
+                                'x': msg.end_effector_pose.position.x,
+                                'y': msg.end_effector_pose.position.y,
+                                'z': msg.end_effector_pose.position.z
+                            },
+                            'orientation': {
+                                'x': msg.end_effector_pose.orientation.x,
+                                'y': msg.end_effector_pose.orientation.y,
+                                'z': msg.end_effector_pose.orientation.z,
+                                'w': msg.end_effector_pose.orientation.w
+                            }
+                        }
+                    })
+                    
+                # Handle RawHandKeypoint message
+                elif hasattr(msg, 'fingertips') and hasattr(msg, 'finger_names'):
+                    result.update({
+                        'send_id': msg.send_id,
+                        'fingertips': [{
+                            'position': {'x': tip.position.x, 'y': tip.position.y, 'z': tip.position.z},
+                            'orientation': {'x': tip.orientation.x, 'y': tip.orientation.y, 'z': tip.orientation.z, 'w': tip.orientation.w}
+                        } for tip in msg.fingertips],
+                        'finger_names': list(msg.finger_names),
+                        'confidence': msg.confidence
+                    })
+                    
+                # Handle ProcessedHandKeypoint message
+                elif (hasattr(msg, 'thumb_joints') and hasattr(msg, 'index_joints') and 
+                    hasattr(msg, 'middle_joints') and hasattr(msg, 'ring_joints') and 
+                    hasattr(msg, 'pinky_joints') and hasattr(msg, 'wrist')):
+                    
+                    def serialize_pose_array(pose_array):
+                        return [{
+                            'position': {'x': pose.position.x, 'y': pose.position.y, 'z': pose.position.z},
+                            'orientation': {'x': pose.orientation.x, 'y': pose.orientation.y, 'z': pose.orientation.z, 'w': pose.orientation.w}
+                        } for pose in pose_array]
+                    
+                    result.update({
+                        'send_id': msg.send_id,
+                        'thumb_joints': serialize_pose_array(msg.thumb_joints),
+                        'index_joints': serialize_pose_array(msg.index_joints),
+                        'middle_joints': serialize_pose_array(msg.middle_joints),
+                        'ring_joints': serialize_pose_array(msg.ring_joints),
+                        'pinky_joints': serialize_pose_array(msg.pinky_joints),
+                        'wrist': {
+                            'position': {'x': msg.wrist.position.x, 'y': msg.wrist.position.y, 'z': msg.wrist.position.z},
+                            'orientation': {'x': msg.wrist.orientation.x, 'y': msg.wrist.orientation.y, 'z': msg.wrist.orientation.z, 'w': msg.wrist.orientation.w}
+                        },
+                        'joint_names': list(msg.joint_names) if hasattr(msg, 'joint_names') else []
+                    })
+                    
+                else:
+                    # Generic approach for other message types
+                    for field_name, field_type in msg.get_fields_and_field_types().items():
+                        if field_name != 'header' and hasattr(msg, field_name):
+                            value = getattr(msg, field_name)
+                            result[field_name] = self._convert_field_to_serializable(value)
+                    
+                return result
+                
             else:
-                # Generic approach - convert to dict representation
+                # Handle messages without header
                 msg_dict = {}
                 for field_name, field_type in msg.get_fields_and_field_types().items():
                     if hasattr(msg, field_name):
                         value = getattr(msg, field_name)
-                        # Handle arrays/lists
-                        if isinstance(value, (list, tuple)):
-                            if len(value) > 0 and hasattr(value[0], '__dict__'):
-                                # List of objects
-                                msg_dict[field_name] = [self._serialize_message_for_logging(v) for v in value]
-                            else:
-                                # List of primitives
-                                msg_dict[field_name] = list(value)
-                        elif hasattr(value, '__dict__'):
-                            # Nested message
-                            msg_dict[field_name] = self._serialize_message_for_logging(value)
-                        else:
-                            # Primitive type
-                            msg_dict[field_name] = value
-                            
+                        msg_dict[field_name] = self._convert_field_to_serializable(value)
+                        
                 return msg_dict
                 
         except Exception as e:
             self.get_logger().warn(f"Failed to serialize message: {e}")
             return {'error': 'serialization_failed', 'message_type': str(type(msg))}
-    
+
+    def _convert_field_to_serializable(self, value):
+        """Convert a field value to JSON-serializable format"""
+        if isinstance(value, (str, int, float, bool, type(None))):
+            return value
+        elif isinstance(value, (list, tuple)):
+            return [self._convert_field_to_serializable(v) for v in value]
+        elif hasattr(value, '__dict__'):
+            # Handle ROS message objects
+            if hasattr(value, 'get_fields_and_field_types'):
+                # It's a ROS message
+                return self._serialize_message_for_logging(value)
+            else:
+                # Other objects with __dict__
+                return {k: self._convert_field_to_serializable(v) for k, v in value.__dict__.items()}
+        else:
+            # Convert to string as fallback
+            return str(value)
+
     def _stop_topic_collection(self, demo_id):
         """Stop collecting data for a demo and cleanup resources"""
         try:
-            ##NOTE
-            # # Destroy subscribers
-            # if demo_id in self.collection_subscribers:
-            #     for topic_id, subscriber in self.collection_subscribers[demo_id].items():
-            #         self.destroy_subscription(subscriber)
-            #         self.get_logger().debug(f"Destroyed subscriber for {topic_id}")
-            #     del self.collection_subscribers[demo_id]
+            # Destroy subscribers
+            if demo_id in self.collection_subscribers:
+                for topic_id, subscriber in self.collection_subscribers[demo_id].items():
+                    self.destroy_subscription(subscriber)
+                    self.get_logger().debug(f"Destroyed subscriber for {topic_id}")
+                del self.collection_subscribers[demo_id]
             
             # Close log files
             if demo_id in self.collection_log_files:
@@ -562,7 +685,7 @@ class DataCollector(ComponentNode):
             self.get_logger().error("Required configurations not loaded")
             return False
             
-        if not self.to_collect_topics:
+        if not self.init_topics:
             self.get_logger().warn("No topics configured for collection")
             return False
             

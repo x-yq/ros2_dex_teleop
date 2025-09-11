@@ -252,7 +252,7 @@ class SystemManager(Node):
         try:
             if 'component_node' in self.all_configs:
                 for component_name in self.all_configs['component_node'].keys():
-                    if 'monitor' or 'data_collector' in component_name:
+                    if 'monitor' in component_name or 'data_collector' in component_name:
                         continue
                     self.expected_components.add(component_name)
             
@@ -269,10 +269,8 @@ class SystemManager(Node):
         
         # Check for component errors when system is running
         if self.system_state in ['paused', 'running']:
-            # Exclude monitor and data collection nodes from error checking
-            excluded_nodes = ['monitor_0', 'data_collection']
-            
-            if (msg.layer_cn_id not in excluded_nodes and 
+
+            if (msg.layer_cn_id in self.expected_components and 
                 msg.status in ['error', 'disconnected', 'stopped']):
                 
                 self.logging(self.system_log_file, f'Component error detected: {msg.layer_cn_id} -> {msg.status}', 'ERROR')
