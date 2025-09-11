@@ -7,5 +7,5 @@ topics:
   - joint_angles_cmd
   - scene_image_processed
   - robot_state
-video_codec: h264
+video_codec: libx265
 storage_format: vla

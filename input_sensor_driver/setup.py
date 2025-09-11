@@ -17,7 +17,7 @@ setup(
     maintainer_email='yeqiao.xu@campus.tu-berlin.de',
     description='TODO: Package description',
     license='TODO: License declaration',
-    tests_require=['pytest'],
+    extras_require={'test': ['pytest']},
     entry_points={
         'console_scripts': [
             'input_sensor_driver_node = input_sensor_driver.input_sensor_driver_node:main',

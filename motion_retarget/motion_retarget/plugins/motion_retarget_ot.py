@@ -5,8 +5,9 @@ import yaml
 import numpy as np
 from rclpy.publisher import Publisher
 from rclpy.subscription import Subscription
-import tf_transformations
-
+import tf2_ros
+import tf2_geometry_msgs
+import math
 
 # Import message types based on the interface definitions
 from component_interfaces.msg import (
@@ -14,7 +15,7 @@ from component_interfaces.msg import (
     JointAngles
 )
 from std_msgs.msg import Header
-from geometry_msgs.msg import Point, Transform
+from geometry_msgs.msg import Point, Transform, TransformStamped
 from builtin_interfaces.msg import Time, Duration
 
 class MotionRetargetOT(MotionRetargetBase):
@@ -126,16 +127,28 @@ class MotionRetargetOT(MotionRetargetBase):
             self.handle_error(f"Error retargeting hand data: {str(e)}")
     
     def quaternion_to_euler(self, quat):
-        """Debug version to see what format is expected"""
+        """Convert quaternion to Euler angles using tf2-compatible method"""
         self.get_logger().debug(f"quaternion_to_euler received: {quat}, type: {type(quat)}")
         
         try:
-            # Log the length if it's a sequence
-            if hasattr(quat, '__len__'):
-                self.get_logger().debug(f"Quaternion length: {len(quat)}")
+            # Extract quaternion components
+            x, y, z, w = quat.x, quat.y, quat.z, quat.w
             
-            q = [quat.x, quat.y, quat.z, quat.w]
-            return tf_transformations.euler_from_quaternion(q)
+            # Convert quaternion to Euler angles (roll, pitch, yaw)
+            t0 = 2.0 * (w * x + y * z)
+            t1 = 1.0 - 2.0 * (x * x + y * y)
+            roll = math.atan2(t0, t1)
+            
+            t2 = 2.0 * (w * y - z * x)
+            t2 = 1.0 if t2 > 1.0 else t2
+            t2 = -1.0 if t2 < -1.0 else t2
+            pitch = math.asin(t2)
+            
+            t3 = 2.0 * (w * z + x * y)
+            t4 = 1.0 - 2.0 * (y * y + z * z)
+            yaw = math.atan2(t3, t4)
+            
+            return roll, pitch, yaw
             
         except Exception as e:
             self.handle_error(f"quaternion_to_euler failed: {e}")
@@ -155,18 +168,13 @@ class MotionRetargetOT(MotionRetargetBase):
         joint_angles_msg.timeout = Duration(sec=1, nanosec=0)
 
         # Simple dummy joint angles (in radians)
-        # Adjust the number based on your robot_joint_names length
         if len(self.robot_joint_names) == 5:
-            # For 5-DOF arm
             joint_angles_msg.joint_angles = [0.1, -0.2, 0.3, 0.0, 0.1]
         elif len(self.robot_joint_names) == 6:
-            # For 6-DOF arm  
             joint_angles_msg.joint_angles = [0.1, -0.2, 0.3, 0.0, 0.1, -0.05]
         else:
-            # Generic: create zeros for however many joints
             joint_angles_msg.joint_angles = [0.0] * len(self.robot_joint_names)
         
-        # Set joint velocities (same length as joint_angles)
         joint_angles_msg.joint_velocities = [0.5] * len(joint_angles_msg.joint_angles)
         
         return joint_angles_msg
@@ -178,7 +186,6 @@ class MotionRetargetOT(MotionRetargetBase):
 
     def _get_required_transforms(self) -> Dict[str, Any]:
         """Get required transforms for retargeting (dummy implementation)"""
-        # In a real implementation, this would fetch actual transforms
         transforms = {}
         
         # Dummy hand-to-robot transform
@@ -206,41 +213,63 @@ class MotionRetargetOT(MotionRetargetBase):
         transforms["cam_to_world"] = cam_to_world
         
         return transforms
-    
-    # def _get_required_transforms(self) -> Dict[str, Any]:
-    #     """Load VR/Glove → Robot calibration transform"""
-    #     transforms = {}
-    #     try:
-    #         config_data = self.get_config("calibration.yaml")
-    #         if config_data:
-    #             calib = yaml.safe_load(config_data)
-    #             t = calib.get("vr_to_robot", {})
-                
-    #             hand_to_robot = Transform()
-    #             hand_to_robot.translation.x = t["translation"]["x"]
-    #             hand_to_robot.translation.y = t["translation"]["y"]
-    #             hand_to_robot.translation.z = t["translation"]["z"]
-    #             hand_to_robot.rotation.x = t["rotation"]["x"]
-    #             hand_to_robot.rotation.y = t["rotation"]["y"]
-    #             hand_to_robot.rotation.z = t["rotation"]["z"]
-    #             hand_to_robot.rotation.w = t["rotation"]["w"]
-    #             transforms["vr_to_robot"] = hand_to_robot
-    #     except Exception as e:
-    #         self.get_logger().warn(f"Using default calibration: {e}")
-    #     return transforms
-    
+
     def _apply_transform(self, point: Point, transform: Transform) -> Point:
-        """Apply a transform to a 3D point"""
-        t = np.array([point.x, point.y, point.z, 1.0])
-        trans = np.array([transform.translation.x,
-                        transform.translation.y,
-                        transform.translation.z])
-        rot = [transform.rotation.x, transform.rotation.y,
-            transform.rotation.z, transform.rotation.w]
-        mat = tf_transformations.quaternion_matrix(rot)
-        mat[0:3, 3] = trans
-        result = mat.dot(t)
-        return Point(x=result[0], y=result[1], z=result[2])
+        """Apply a transform to a 3D point using tf2 method"""
+        try:
+            # Create a PointStamped for tf2 transformation
+            point_stamped = tf2_geometry_msgs.PointStamped()
+            point_stamped.header.frame_id = "source_frame"
+            point_stamped.point = point
+            
+            # Create a TransformStamped
+            transform_stamped = TransformStamped()
+            transform_stamped.header.frame_id = "source_frame"
+            transform_stamped.child_frame_id = "target_frame"
+            transform_stamped.transform = transform
+            
+            # Apply the transform using tf2
+            transformed_point = tf2_geometry_msgs.do_transform_point(point_stamped, transform_stamped)
+            
+            return transformed_point.point
+            
+        except Exception as e:
+            self.handle_error(f"Failed to apply transform: {e}")
+            # Fallback to manual transformation
+            return self._apply_transform_manual(point, transform)
+
+    def _apply_transform_manual(self, point: Point, transform: Transform) -> Point:
+        """Manual transformation implementation as fallback"""
+        # Extract translation
+        tx, ty, tz = transform.translation.x, transform.translation.y, transform.translation.z
+        
+        # Extract rotation quaternion
+        qx, qy, qz, qw = transform.rotation.x, transform.rotation.y, transform.rotation.z, transform.rotation.w
+        
+        # Convert quaternion to rotation matrix
+        # Rotation matrix from quaternion
+        xx = qx * qx
+        xy = qx * qy
+        xz = qx * qz
+        xw = qx * qw
+        yy = qy * qy
+        yz = qy * qz
+        yw = qy * qw
+        zz = qz * qz
+        zw = qz * qw
+        
+        rot_matrix = np.array([
+            [1 - 2 * (yy + zz), 2 * (xy - zw), 2 * (xz + yw)],
+            [2 * (xy + zw), 1 - 2 * (xx + zz), 2 * (yz - xw)],
+            [2 * (xz - yw), 2 * (yz + xw), 1 - 2 * (xx + yy)]
+        ])
+        
+        # Apply rotation and translation
+        original_vec = np.array([point.x, point.y, point.z])
+        rotated_vec = np.dot(rot_matrix, original_vec)
+        translated_vec = rotated_vec + np.array([tx, ty, tz])
+        
+        return Point(x=translated_vec[0], y=translated_vec[1], z=translated_vec[2])
 
     def urgent_stop(self):
         """Emergency stop implementation"""
@@ -256,11 +285,7 @@ class MotionRetargetOT(MotionRetargetBase):
         stop_msg.timeout = Duration(sec=0, nanosec=0)
         
         self.publish_msg("joint_angles_cmd", stop_msg)
-
         self.stop_component()
-
-
         self.set_state("disconnected")
         
         self.get_logger().info("MotionRetargetOT emergency stopped successfully")
-
