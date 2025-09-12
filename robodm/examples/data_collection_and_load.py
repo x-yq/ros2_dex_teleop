@@ -102,10 +102,11 @@ def collect_data_with_initial_stream_test():
 
 if __name__ == "__main__":
 
-    path = '/Users/x-yq/Desktop/MasterThesis/datasets/roboDm/data_collection/test_trajectory.vla'
+    # path = '/Users/x-yq/Desktop/MasterThesis/datasets/roboDm/data_collection/test_trajectory.vla'
     # path = os.path.join(path, "test_trajectory.vla")
+    path = '/root/dev_ws/data/demos/scene_02/scene_02.vla'
 
-    collect_data_diff_freq(path)
+    # collect_data_diff_freq(path)
     load_data(path)
 
     # Clean up

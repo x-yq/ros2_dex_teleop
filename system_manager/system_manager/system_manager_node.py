@@ -31,7 +31,8 @@ class SystemManager(Node):
         self.ros2_domain_id = ros2_domain_id
         
         # File paths for logging
-        self.system_log_file = "/root/dev_ws/log/system.log"
+        t_str = str(time.time())
+        self.system_log_file = f"/root/dev_ws/log/system/system_{t_str}.log"
         self.monitor_log_folder = "/root/dev_ws/log/monitor"
         self.latency_log_folder = "/root/dev_ws/log/latency"
 

@@ -435,66 +435,90 @@ class DataCollector(ComponentNode):
             
         except Exception as e:
             self.get_logger().error(f"Failed to register features for topic {topic_id}: {e}")
-    
-    def _parse_and_register_fields(self, demo_id, topic_id, msg_obj, prefix=""):
-        """Recursively parse message fields and register them as features"""
-        if hasattr(msg_obj, 'get_fields_and_field_types'):
-            fields = msg_obj.get_fields_and_field_types()
-            
-            for field_name, field_type in fields.items():
-                if 'header' in field_name or 'send_id' in field_name:
-                    continue
-                feature_name = f"{prefix}/{field_name}" if prefix else field_name
 
-                self.get_logger().warn(feature_name)
+
+    def _parse_and_register_fields(self, demo_id, topic_id, msg_obj, prefix=""):
+        """Parse and register fields with leaf check first, before introspection"""
+        
+        # First, try to treat msg_obj itself as a leaf field
+        feature_name = prefix or topic_id
+        self.get_logger().debug(f"Checking if {feature_name} is leaf field...")
+        
+        if self._is_leaf_field(msg_obj):
+            if feature_name not in self.registered_features[demo_id]:
+                self.registered_features[demo_id].add(feature_name)
+                self.get_logger().debug(f"Registered leaf feature: {feature_name}")
+            return  # Stop recursion, already leaf
+
+        # If not a leaf, try to get subfields
+        if hasattr(msg_obj, 'get_fields_and_field_types'):
+            self.get_logger().debug(f"Parsing subfields for {feature_name}...")
+
+            fields = msg_obj.get_fields_and_field_types()
+            for field_name in fields.keys():
+                if 'header' in field_name or 'send_id' in field_name or 'timeout' in field_name:
+                    continue
+                sub_feature_name = f"{prefix}/{field_name}" if prefix else field_name
 
                 # Skip if already registered
-                if feature_name in self.registered_features[demo_id]:
+                if sub_feature_name in self.registered_features[demo_id]:
                     continue
-                    
+
                 try:
                     field_value = getattr(msg_obj, field_name)
-                    
-                    # Handle different field types
-                    if self._is_leaf_field(field_type, field_value):
-                        # Register as leaf feature
-                        self.registered_features[demo_id].add(feature_name)
-                        self.get_logger().debug(f"Registered leaf feature: {feature_name}")
-                    else:
-                        # Recursively parse nested messages
-                        self._parse_and_register_fields(
-                            demo_id, topic_id, field_value, feature_name
-                        )
-                        
+
+                    # Recursively parse using the modified method
+                    self._parse_and_register_fields(demo_id, topic_id, field_value, sub_feature_name)
+
                 except Exception as e:
                     self.get_logger().warn(f"Failed to parse field {field_name}: {e}")
+
     
-    def _is_leaf_field(self, field_type, field_value):
-        """Determine if a field should be treated as a leaf feature"""
-        # Basic ROS types that should be leaf features
-        basic_types = ['float32', 'float64', 'int8', 'int16', 'int32', 'int64',
-                      'uint8', 'uint16', 'uint32', 'uint64', 'bool', 'string']
+    def _is_leaf_field(self, field_value):
+        """Determine if a field should be treated as a leaf feature based on its actual type"""
         
-        # Check if it's a basic type or array of basic types
-        for basic_type in basic_types:
-            if basic_type in field_type:
-                return True
-        
-        # Check for supported geometry types
-        geometry_types = ['geometry_msgs/msg/Point', 'geometry_msgs/msg/Pose',
-                         'geometry_msgs/msg/Vector3', 'geometry_msgs/msg/Quaternion',
-                         'geometry_msgs/msg/Transform']
-        
-        if any(geo_type in field_type for geo_type in geometry_types):
-            return True
-        
-        # Check for sensor data types
-        sensor_types = ['sensor_msgs/msg/Image', 'sensor_msgs/msg/PointCloud2',
-                       'sensor_msgs/msg/LaserScan']
-        
-        if any(sensor_type in field_type for sensor_type in sensor_types):
+        # Handle None values
+        if field_value is None:
+            return False
+            
+        # Basic Python types
+        if isinstance(field_value, (int, float, bool, str, bytes)):
             return True
             
+        # NumPy arrays
+        if isinstance(field_value, np.ndarray):
+            return True
+
+        # Sensor message types
+        if isinstance(field_value, (Image, PointCloud2, LaserScan)):
+            return True
+            
+        # Geometry message types  
+        if isinstance(field_value, (Point, Vector3, Quaternion, Pose, Transform)):
+            return True
+            
+        # Navigation message types
+        if isinstance(field_value, OccupancyGrid):
+            return True
+            
+        # Time/Duration types
+        if isinstance(field_value, (Time, Duration)):
+            return True
+            
+        # Lists/tuples of basic types
+        if isinstance(field_value, (list, tuple)):
+            if not field_value:  # empty list/tuple
+                return True
+            # Check if all elements are basic types
+            if all(isinstance(v, (int, float, bool, str, bytes)) for v in field_value):
+                return True
+            # Check if all elements are geometry types
+            if all(isinstance(v, (Point, Vector3, Quaternion, Pose, Transform)) for v in field_value):
+                return True
+            return False
+        
+            
+        # Default: not a leaf field
         return False
 
     def _create_topic_callback(self, demo_id, topic_id, msg_type_class, metadata):
@@ -514,7 +538,7 @@ class DataCollector(ComponentNode):
                 self.get_logger().debug(f"Processing message for topic {topic_id}")
                 
                 # Extract and add data for each registered feature
-                self._extract_and_add_features(demo_id, topic_id, msg, trajectory)
+                self._process_message_fields(demo_id, topic_id, msg, trajectory, prefix=topic_id)
                 
                 self.get_logger().debug(f"Successfully processed message for topic {topic_id}")
                     
@@ -530,215 +554,148 @@ class DataCollector(ComponentNode):
                 self.get_logger().error(f"Error in callback for {demo_id}/{topic_id}: {error_info}")
                 
         return topic_callback
-
-    def _extract_and_add_features(self, demo_id, topic_id, msg, trajectory):
-        """Extract data from message and add to trajectory using hierarchical feature names"""
-        try:
-            self.get_logger().debug(f"Extracting features from {topic_id}")
-            
-            # Process message fields recursively
-            self._process_message_fields(demo_id, topic_id, msg, trajectory, prefix=topic_id)
-            
-            self.get_logger().debug(f"Finished extracting features from {topic_id}")
-            
-        except Exception as e:
-            self.get_logger().error(f"Failed to extract features from {topic_id}: {str(e)}")
-            self.get_logger().error(f"Traceback: {traceback.format_exc()}")
-            raise
-
+    
     def _process_message_fields(self, demo_id, topic_id, msg_obj, trajectory, prefix=""):
-        """Recursively process message fields and add data to trajectory"""
+        """
+        Process pre-registered message fields and add data to trajectory.
+        Uses self.registered_features to avoid dynamic introspection.
+        """
         try:
-            if not hasattr(msg_obj, 'get_fields_and_field_types'):
-                self.get_logger().warn(f"Message object for {topic_id} has no get_fields_and_field_types method")
-                return
-                
-            fields = msg_obj.get_fields_and_field_types()
-            self.get_logger().debug(f"Processing {len(fields)} fields for {prefix}")
-            
-            for field_name, field_type in fields.items():
-                if 'header' in field_name or 'send_id' in field_name:
-                    self.get_logger().debug(f"Skipping {field_name} (header/send_id)")
+            # Get the set of registered features for this demo
+            registered = self.registered_features.get(demo_id, set())
+            self.get_logger().warn(str(self.registered_features))
+
+            for feature_name in registered:
+
+                # Skip fields not under this topic/prefix
+                if prefix and not feature_name.startswith(prefix):
                     continue
 
-                feature_name = f"{prefix}/{field_name}" if prefix else field_name
-                
-                try:
-                    field_value = getattr(msg_obj, field_name)
-                    self.get_logger().debug(f"Processing field: {feature_name}, type: {field_type}, value_type: {type(field_value)}")
-                    
-                    if self._is_leaf_field(field_type, field_value):
-                        # Convert and add leaf field data
-                        numpy_data = self._convert_field_to_numpy(field_value, field_type)
-                        self.get_logger().debug(f"Converted {feature_name} to numpy: {type(numpy_data)} {getattr(numpy_data, 'shape', 'N/A')}")
-                        
-                        if numpy_data is not None:
-                            # Check if trajectory is still valid
-                            if not hasattr(trajectory, 'add'):
-                                self.get_logger().error(f"Trajectory object is invalid for {demo_id}")
-                                return
-                                
-                            try:
-                                trajectory.add(feature_name, numpy_data)
-                                self.get_logger().debug(f"Successfully added {feature_name} to trajectory")
-                            except Exception as add_error:
-                                self.get_logger().error(f"Failed to add {feature_name} to trajectory: {str(add_error)}")
-                                self.get_logger().error(f"Data type: {type(numpy_data)}, shape: {getattr(numpy_data, 'shape', 'N/A')}")
-                                # Continue with other fields instead of failing completely
-                                continue
-                        else:
-                            self.get_logger().debug(f"Skipping {feature_name} - conversion returned None")
-                    else:
-                        # Recursively process nested fields
-                        self.get_logger().debug(f"Recursively processing nested field: {feature_name}")
-                        self._process_message_fields(
-                            demo_id, topic_id, field_value, trajectory, feature_name
-                        )
-                            
-                except AttributeError as attr_error:
-                    self.get_logger().warn(f"Field {field_name} not found in message: {attr_error}")
-                except Exception as field_error:
-                    self.get_logger().error(f"Failed to process field {feature_name}: {str(field_error)}")
-                    self.get_logger().error(f"Field traceback: {traceback.format_exc()}")
-                    # Continue with other fields
+                # Extract the nested attribute dynamically
+                attr_parts = feature_name.split("/")
+                field_value = msg_obj
+                for part in attr_parts[-1:]:  # only take the last segment, because prefix may be multiple levels
+                    try:
+                        field_value = getattr(field_value, part)
+                    except AttributeError:
+                        self.get_logger().warn(f"Field {feature_name} not found in message")
+                        field_value = None
+                        break
+
+                if field_value is None:
                     continue
-                    
+
+                # Use the modified _is_leaf_field method (no field_type parameter)
+                if self._is_leaf_field(field_value):
+                    numpy_data = self._convert_field_to_numpy(field_value)
+                    if numpy_data is not None:
+                        try:
+                            trajectory.add(feature_name, numpy_data)
+                        except Exception as e:
+                            self.get_logger().error(
+                                f"Failed to add {feature_name} to trajectory: {e}"
+                            )
+                else:
+                    self.get_logger().debug(
+                        f"Skipping nested field {feature_name} (not leaf)"
+                    )
+
         except Exception as e:
             self.get_logger().error(f"Critical error in _process_message_fields for {prefix}: {str(e)}")
             self.get_logger().error(f"Traceback: {traceback.format_exc()}")
             raise
-
-    def _convert_field_to_numpy(self, field_value, field_type):
+    
+    def _convert_field_to_numpy(self, field_value):
         """Convert ROS field to numpy array using ros2_numpy and type detection"""
+        
         try:
-            self.get_logger().debug(f"Converting field_type: {field_type}, value_type: {type(field_value)}")
-            
             # Handle None values
             if field_value is None:
                 self.get_logger().debug("Field value is None, skipping")
                 return None
+
+            # Handle list/tuple of strings
+            if isinstance(field_value, (list, tuple)) and all(isinstance(v, str) for v in field_value):
+                return ";".join(field_value)
             
             # Handle string types
             if isinstance(field_value, str):
                 self.get_logger().debug("Field is string type")
-                return field_value  # Keep as string
+                return field_value
             
             # Handle basic numeric types
-            if isinstance(field_value, (int, float, bool)):
+            if isinstance(field_value, (int, float, bool, bytes)):
                 self.get_logger().debug(f"Field is basic numeric type: {type(field_value)}")
                 return np.array([field_value])
             
-            # Handle lists/arrays of basic types
-            if isinstance(field_value, (list, tuple)):
-                self.get_logger().debug(f"Field is list/tuple with {len(field_value)} elements")
+            # Handle lists/arrays of numeric types
+            if isinstance(field_value, (list, tuple, np.ndarray)) and all(isinstance(v, (int, float, bool)) for v in field_value):
+                self.get_logger().debug(f"Field is numeric list/tuple with {len(field_value)} elements")
+                return np.array(field_value)
+            
+            # Handle ROS messages
+            # Sensor messages
+            if isinstance(field_value, Image):
+                self.get_logger().debug("Processing Image message")
                 try:
-                    return np.array(field_value)
-                except Exception as list_error:
-                    self.get_logger().warn(f"Failed to convert list/tuple to numpy: {list_error}")
+                    return rnp.numpify(field_value)
+                except Exception as e:
+                    self.get_logger().warn(f"Failed Image conversion: {e}")
+                    return None
+
+            if isinstance(field_value, PointCloud2):
+                self.get_logger().debug("Processing PointCloud2 message")
+                try:
+                    return rnp.numpify(field_value)
+                except Exception as e:
+                    self.get_logger().warn(f"Failed PointCloud2 conversion: {e}")
+                    return None
+
+            if isinstance(field_value, LaserScan):
+                self.get_logger().debug("Processing LaserScan message")
+                try:
+                    return rnp.numpify(field_value)
+                except Exception as e:
+                    self.get_logger().warn(f"Failed LaserScan conversion: {e}")
                     return None
             
-            # Handle ROS message types using _type_support
-            if hasattr(field_value, '_type_support'):
-                msg_type = str(field_value._type_support)
-                self.get_logger().debug(f"Processing ROS message type: {msg_type}")
-                
-                # Handle Image messages
-                if 'sensor_msgs/msg/Image' in msg_type:
-                    self.get_logger().debug("Processing Image message")
-                    try:
-                        # Convert using ros2_numpy
-                        img_array = rnp.numpify(field_value)
-                        self.get_logger().debug(f"Image converted to numpy: {img_array.shape}")
-                        return img_array
-                    except Exception as rnp_error:
-                        self.get_logger().warn(f"Failed to convert Image with ros2_numpy: {rnp_error}")
-                        # Fallback to cv_bridge
-                        try:
-                            if not hasattr(self, 'cv_bridge'):
-                                self.cv_bridge = CvBridge()
-                            cv_image = self.cv_bridge.imgmsg_to_cv2(field_value, desired_encoding='passthrough')
-                            return np.array(cv_image)
-                        except Exception as cv_error:
-                            self.get_logger().error(f"Failed to convert Image with cv_bridge: {cv_error}")
-                            return None
-                
-                # Handle PointCloud2 messages
-                elif 'sensor_msgs/msg/PointCloud2' in msg_type:
-                    self.get_logger().debug("Processing PointCloud2 message")
-                    try:
-                        pc_array = rnp.numpify(field_value)
-                        self.get_logger().debug(f"PointCloud2 converted to numpy: {pc_array.shape}")
-                        return pc_array
-                    except Exception as pc_error:
-                        self.get_logger().error(f"Failed to convert PointCloud2: {pc_error}")
-                        return None
-                
-                # Handle LaserScan messages
-                elif 'sensor_msgs/msg/LaserScan' in msg_type:
-                    self.get_logger().debug("Processing LaserScan message")
-                    try:
-                        scan_array = rnp.numpify(field_value)
-                        self.get_logger().debug(f"LaserScan converted to numpy: {scan_array.shape}")
-                        return scan_array
-                    except Exception as scan_error:
-                        self.get_logger().error(f"Failed to convert LaserScan: {scan_error}")
-                        return None
-                
-                # Handle geometry messages (Point, Pose, Vector3, etc.)
-                elif 'geometry_msgs/msg/Point' in msg_type:
-                    self.get_logger().debug("Processing Point message")
-                    return rnp.numpify(field_value)
-                elif 'geometry_msgs/msg/Vector3' in msg_type:
-                    self.get_logger().debug("Processing Vector3 message")
-                    return rnp.numpify(field_value)
-                elif 'geometry_msgs/msg/Quaternion' in msg_type:
-                    self.get_logger().debug("Processing Quaternion message")
-                    return rnp.numpify(field_value)
-                elif 'geometry_msgs/msg/Pose' in msg_type:
-                    self.get_logger().debug("Processing Pose message")
-                    return rnp.numpify(field_value)
-                elif 'geometry_msgs/msg/Transform' in msg_type:
-                    self.get_logger().debug("Processing Transform message")
-                    return rnp.numpify(field_value)
-                elif 'nav_msgs/msg/OccupancyGrid' in msg_type:
-                    self.get_logger().debug("Processing OccupancyGrid message")
-                    return rnp.numpify(field_value)
-            
-            # Handle ROS arrays/sequences
-            if hasattr(field_value, '__iter__') and not isinstance(field_value, (str, bytes)):
-                self.get_logger().debug("Processing iterable field")
+            # Geometry messages
+            geometry_types = (Point, Vector3, Quaternion, Pose, Transform)
+            if isinstance(field_value, geometry_types):
+                self.get_logger().debug(f"Processing {type(field_value).__name__} message")
+                return rnp.numpify(field_value)
+
+            # Sequence of geometry messages
+            if isinstance(field_value, (list, tuple)) and all(isinstance(v, geometry_types) for v in field_value):
+                self.get_logger().debug(f"Processing sequence of {type(field_value[0]).__name__}")
                 try:
-                    # Try to convert sequence to numpy array
-                    result = np.array(list(field_value))
-                    self.get_logger().debug(f"Converted iterable to numpy: {result.shape}")
-                    return result
-                except Exception as iter_error:
-                    self.get_logger().warn(f"Failed to convert iterable: {iter_error}")
+                    return np.stack([rnp.numpify(v) for v in field_value], axis=0)
+                except Exception as e:
+                    self.get_logger().warn(f"Failed sequence conversion: {e}")
                     return None
             
-            # Handle builtin_interfaces Time and Duration
+            # OccupancyGrid
+            if isinstance(field_value, OccupancyGrid):
+                self.get_logger().debug("Processing OccupancyGrid message")
+                return rnp.numpify(field_value)
+            
+            # Time/Duration
             if hasattr(field_value, 'sec') and hasattr(field_value, 'nanosec'):
                 self.get_logger().debug("Processing Time/Duration message")
                 return np.array([field_value.sec, field_value.nanosec])
             
-            # Fallback: try to convert using ros2_numpy
+            # Fallback: try ros2_numpy
             try:
-                self.get_logger().debug("Trying ros2_numpy fallback conversion")
-                result = rnp.numpify(field_value)
-                self.get_logger().debug(f"ros2_numpy fallback successful: {type(result)}")
-                return result
-            except Exception as rnp_fallback_error:
-                self.get_logger().debug(f"ros2_numpy fallback failed: {rnp_fallback_error}")
-                # Final fallback: convert to string representation
-                self.get_logger().debug("Using string fallback")
+                self.get_logger().debug("Trying ros2_numpy fallback")
+                return rnp.numpify(field_value)
+            except Exception as e:
+                self.get_logger().debug(f"ros2_numpy fallback failed: {e}")
                 return str(field_value)
-                
+            
         except Exception as e:
-            self.get_logger().error(f"Critical error in _convert_field_to_numpy: {str(e)}")
-            self.get_logger().error(f"Field type: {field_type}, Value type: {type(field_value)}")
+            self.get_logger().error(f"Critical error in _convert_field_to_numpy: {e}")
             self.get_logger().error(f"Traceback: {traceback.format_exc()}")
             return None
-
 
     def _stop_topic_collection(self, demo_id):
         """Stop collecting data for a demo and cleanup resources"""

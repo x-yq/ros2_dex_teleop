@@ -338,10 +338,10 @@ class RealsenseDriver(SensorDriverBase):
         except Exception as e:
             self.handle_error("Error in stream", e)
 
-    def publish_msg_timer(self):
+    def register_timer(self):
         if self.compo_timers != []:
             for t in self.compo_timers:
-                t.cancel
+                t.cancel()
 
         # Calculate timer period from frequency
         timer_period = 1.0 / self.fps
