@@ -952,6 +952,8 @@ def main(args=None):
                 config_folder_path = sys.argv[i + 1]
             elif arg == "--ros2_domain_id" and i + 1 < len(sys.argv):
                 ros2_domain_id = int(sys.argv[i + 1])
+            elif arg == "--node_num" and i + 1 < len(sys.argv):
+                node_num = int(sys.argv[i + 1])
 
     # Create the driver node with the parsed parameters
     node = SystemManager(
@@ -961,8 +963,8 @@ def main(args=None):
 
     try:
         node.logging(f"SystemManager node initialized, spinning...", "INFO")
-
-        executor = rclpy.executors.MultiThreadedExecutor(num_threads=9)
+        node.logging(f"Thread number: {node_num}", "INFO")
+        executor = rclpy.executors.MultiThreadedExecutor(num_threads=node_num)
         executor.add_node(node)
         executor.spin()
 

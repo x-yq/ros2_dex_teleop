@@ -1,11 +1,17 @@
 platforms:
-  - hardware_id: jetson_1 # hardware_id, must be a execution platform
+  - hardware_id: pi4-197 # hardware_id, must be a execution platform
     containers:
       - name: snesor_drivers
-        dockerfile: ./docker/Dockerfile.driver # e.g.
+        dockerfile: ./docker/Dockerfile.base # e.g.
         nodes: # must be the layer_cn_id
-          - sensor_driver_rococo # e.g.
-          - sensor_driver_realsense # e.g.
+          - data_collector
+          - input_sensor_driver_rococo
+          - input_control_data_processor
+          - motion_retarget
+          - robot_driver
+          - feedback_sensor_driver_realsense
+          - feedback_data_processor
+          - feedback_projector_driver
         env:
           DISPLAY: 0 # optional
         network:
@@ -13,6 +19,3 @@ platforms:
           net: host
         permissions:
           privileged: true
-        volume:
-          workdir_local: /home/user/dev_ws # src repo to be cp to the container
-          workdir_container: /root/dev_ws/src # dst repo in the container

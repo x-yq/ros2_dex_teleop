@@ -1,0 +1,119 @@
+# Use ROS2 Humble base image
+FROM ros:humble-ros-base
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV ROS_DISTRO=humble
+ENV WORKSPACE=/root/dev_ws
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    python3-pip \
+    python3-colcon-common-extensions \
+    python3-rosdep \
+    git \
+    wget \
+    curl \
+    vim \
+    build-essential \
+    cmake \
+    # OpenCV and image processing dependencies
+    libopencv-dev \
+    python3-opencv \
+    # FFmpeg for video codec support
+    ffmpeg \
+    libavcodec-dev \
+    libavformat-dev \
+    libavutil-dev \
+    libswscale-dev \
+    # Docker client for kpi_monitor
+    docker.io \
+    # Networking tools
+    net-tools \
+    iputils-ping \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+RUN pip3 install --no-cache-dir \
+    "numpy<2" \
+    pyyaml \
+    opencv-python \
+    docker \
+    psutil \
+    # robodm dependencies (from robodm_README.md)
+    av \
+    pillow \
+    tqdm 
+    # # Optional robodm dependencies
+    # boto3 \
+    # datasets \
+    # tensorflow-datasets \
+    # torch \
+    # torchvision
+
+# Install ROS2 Python packages
+RUN pip3 install --no-cache-dir \
+    cv-bridge \
+    "ros2-numpy==0.0.5"
+
+# # robodm dependencies
+RUN pip install --upgrade pip setuptools wheel packaging
+
+# Create workspace
+RUN mkdir -p ${WORKSPACE}/src
+
+# Copy project folders to workspace
+COPY system_manager ${WORKSPACE}/src/system_manager
+COPY data_collector ${WORKSPACE}/src/data_collector
+COPY kpi_monitor ${WORKSPACE}/src/kpi_monitor
+COPY core_bases ${WORKSPACE}/src/core_bases
+COPY config_files ${WORKSPACE}/src/config_files
+COPY component_interfaces ${WORKSPACE}/src/component_interfaces
+COPY system_interfaces ${WORKSPACE}/src/system_interfaces
+COPY robodm ${WORKSPACE}/src/robodm
+
+# Install robodm
+WORKDIR ${WORKSPACE}/src/robodm
+RUN pip install .
+
+# Install rosdep dependencies
+WORKDIR ${WORKSPACE}
+RUN apt-get update && \
+    rosdep update && \
+    rosdep install --from-paths src --ignore-src -r -y && \
+    rm -rf /var/lib/apt/lists/*
+
+# Build the workspace
+RUN /bin/bash -c "source /opt/ros/${ROS_DISTRO}/setup.bash && \
+    colcon build"
+
+# Create log directories
+RUN mkdir -p ${WORKSPACE}/log/system \
+    ${WORKSPACE}/log/monitor \
+    ${WORKSPACE}/log/latency
+
+# Create entrypoint script
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Source ROS2 setup\n\
+source /opt/ros/${ROS_DISTRO}/setup.bash\n\
+\n\
+# Source workspace setup\n\
+source ${WORKSPACE}/install/setup.bash\n\
+\n\
+# Execute command\n\
+exec "$@"' > /entrypoint.sh && \
+    chmod +x /entrypoint.sh
+
+# Set default environment variables
+ENV ROS2_DOMAIN_ID=0
+ENV CONFIG_FOLDER_PATH=/root/dev_ws/src/config_files
+
+WORKDIR ${WORKSPACE}
+
+ENTRYPOINT ["/entrypoint.sh"]
+
+# CMD ["ros2", "launch", "system_manager", "system_manager.launch.py", \
+#      "ros_domain_id:=${ROS2_DOMAIN_ID}", \
+#      "config_folder_path:=${CONFIG_FOLDER_PATH}"]
