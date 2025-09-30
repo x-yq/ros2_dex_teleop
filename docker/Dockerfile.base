@@ -39,11 +39,15 @@ RUN pip3 install --no-cache-dir \
 ## Create workspace
 RUN mkdir -p ${WORKSPACE}/src
 
-## Copy project folders to workspace
+## Copy packages to workspace
 COPY kpi_monitor ${WORKSPACE}/src/kpi_monitor
 COPY core_bases ${WORKSPACE}/src/core_bases
 COPY component_interfaces ${WORKSPACE}/src/component_interfaces
 COPY system_interfaces ${WORKSPACE}/src/system_interfaces
+COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
+
+## TODO: Copy your other packages here
+# COPY ./ ${WORKSPACE}/src/
 
 # Install rosdep dependencies
 WORKDIR ${WORKSPACE}

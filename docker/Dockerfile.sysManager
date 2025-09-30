@@ -64,6 +64,7 @@ RUN mkdir -p ${WORKSPACE}/src
 
 # Copy project folders to workspace
 COPY system_manager ${WORKSPACE}/src/system_manager
+COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
 COPY data_collector ${WORKSPACE}/src/data_collector
 COPY kpi_monitor ${WORKSPACE}/src/kpi_monitor
 COPY core_bases ${WORKSPACE}/src/core_bases
@@ -114,6 +115,6 @@ WORKDIR ${WORKSPACE}
 
 ENTRYPOINT ["/entrypoint.sh"]
 
-# CMD ["ros2", "launch", "system_manager", "system_manager.launch.py", \
-#      "ros_domain_id:=${ROS2_DOMAIN_ID}", \
-#      "config_folder_path:=${CONFIG_FOLDER_PATH}"]
+CMD ["ros2", "launch", "system_manager", "system_manager.launch.py", \
+     "ros_domain_id:=${ROS2_DOMAIN_ID}", \
+     "config_folder_path:=${CONFIG_FOLDER_PATH}"]

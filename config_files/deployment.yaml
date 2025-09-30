@@ -1,0 +1,48 @@
+# platforms:
+#   - hardware_id: mac_pc # hardware_id, must be a execution platform
+#     containers:
+#       - name: teleop-system
+#         launch_file_path: ./launcher/launch/system_manager.launch.py
+#         dockerfile: ./docker/Dockerfile.sysManager # e.g.
+#         nodes: # must be the layer_cn_id
+#           - data_collector
+#           - system_manager
+#         env:
+#           DISPLAY: 0 # optional
+#         network:
+#           ipc: host
+#           net: host
+#         permissions:
+#           privileged: true
+  
+#   - hardware_id: pi4-197 # hardware_id, must be a execution platform
+
+#     containers: 
+
+#       - name: teleop-components
+#         launch_file_path: ./launcher/launch/component_nodes.launch.py
+#         dockerfile: ./docker/Dockerfile.components # e.g.
+#         nodes: # must be the layer_cn_id
+#           - input_sensor_driver_rococo
+#           - input_control_data_processor
+#           - motion_retarget
+#           - robot_driver
+#           - feedback_sensor_driver_realsense
+#           - feedback_data_processor
+#           - feedback_projector_driver
+#         env:
+#           DISPLAY: 0 # optional
+#         network:
+#           ipc: host
+#           net: host
+#         permissions:
+#           privileged: true
+      
+platforms:
+  - hardware_id: mac_pc
+    containers:
+      - teleop-system
+
+  - hardware_id: pi4-197
+    containers:
+      - teleop-components

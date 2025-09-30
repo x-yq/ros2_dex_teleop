@@ -1,0 +1,57 @@
+services:
+
+  teleop-system:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.sysManager
+    container_name: teleop-system
+    environment:
+      - DISPLAY=0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    network_mode: host
+    ipc: host
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    working_dir: /root
+    volumes:
+      - /tmp/argus_socket:/tmp/argus_socket
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/udev:/run/udev
+      - /dev:/dev
+    device_cgroup_rules:
+      - 'c *:* rmw'
+    command: >
+      bash -c "source /opt/ros/*/setup.bash &&
+               ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
+    restart: unless-stopped
+
+  teleop-components:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.components
+    container_name: teleop-components
+    environment:
+      - DISPLAY=0
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+    network_mode: host
+    ipc: host
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    working_dir: /root
+    volumes:
+      - /tmp/argus_socket:/tmp/argus_socket
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/udev:/run/udev
+      - /dev:/dev
+    device_cgroup_rules:
+      - 'c *:* rmw'
+    command: >
+      bash -c "source /opt/ros/*/setup.bash &&
+               ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
+    restart: unless-stopped
