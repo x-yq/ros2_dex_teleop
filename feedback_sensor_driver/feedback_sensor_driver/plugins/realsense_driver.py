@@ -9,9 +9,7 @@ from std_msgs.msg import Header
 from cv_bridge import CvBridge
 from builtin_interfaces.msg import Time
 from core_bases.sensor_driver_base import SensorDriverBase
-import hydra
 from omegaconf import OmegaConf, DictConfig
-from hydra.utils import instantiate
 
 
 class RealsenseDriver(SensorDriverBase):

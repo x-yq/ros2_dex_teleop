@@ -250,10 +250,11 @@ def deploy_platform(
         print(f"✗ No containers specified for platform {hardware_id}")
         return
     
-    print(f"Containers: {', '.join(containers)}")
+    container_names = [c.get('name') if isinstance(c, dict) else c for c in containers]
+    print(f"Containers: {', '.join(container_names)}")
     
     # Verify containers exist in docker-compose.yaml
-    if not verify_docker_compose_services(compose_config, containers):
+    if not verify_docker_compose_services(compose_config, container_names):
         print(f"✗ Cannot deploy platform {hardware_id} due to missing container definitions")
         return
     
@@ -262,10 +263,10 @@ def deploy_platform(
     
     if stop_only:
         # Stop containers
-        stop_containers(executor, containers, compose_file_path)
+        stop_containers(executor, container_names, compose_file_path)
     else:
         # Deploy containers using docker-compose
-        deploy_containers(executor, containers, ros_domain_id, compose_file_path)
+        deploy_containers(executor, container_names, ros_domain_id, compose_file_path)
     
     print(f"✓ Platform {hardware_id} {'stopped' if stop_only else 'deployed'} successfully")
 

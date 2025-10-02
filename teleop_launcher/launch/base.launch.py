@@ -16,12 +16,9 @@ def launch_setup(context, *args, **kwargs):
     
     # Path to deployment.yaml (adjust this path as needed for your setup)
     deployment_config_path = os.path.join(config_folder_path, "deployment.yaml")
-    
-    # Get the current launch file path dynamically
-    current_launch_file = os.path.abspath(__file__)
-    
+        
     # Get hardware_id for this launch file
-    hardware_id = get_exec_platform_id(deployment_config_path, current_launch_file)
+    hardware_id = get_exec_platform_id(deployment_config_path)
     hardware_id = hardware_id.replace('-', '_')
     
     nodes = []

@@ -45,6 +45,8 @@ COPY core_bases ${WORKSPACE}/src/core_bases
 COPY component_interfaces ${WORKSPACE}/src/component_interfaces
 COPY system_interfaces ${WORKSPACE}/src/system_interfaces
 COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
+COPY config_files ${WORKSPACE}/src/config_files
+
 
 ## TODO: Copy your other packages here
 # COPY ./ ${WORKSPACE}/src/

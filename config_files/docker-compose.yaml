@@ -8,6 +8,7 @@ services:
     environment:
       - DISPLAY=0
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CONTAINER_NAME=teleop-system
     network_mode: host
     ipc: host
     privileged: true
@@ -24,9 +25,8 @@ services:
     device_cgroup_rules:
       - 'c *:* rmw'
     command: >
-      bash -c "source /opt/ros/*/setup.bash &&
-               ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
-    restart: unless-stopped
+      bash -c "source /opt/ros/humble/setup.bash && tail -f /dev/null"
+    restart: on-failure
 
   teleop-components:
     build:
@@ -36,6 +36,7 @@ services:
     environment:
       - DISPLAY=0
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CONTAINER_NAME=teleop-components
     network_mode: host
     ipc: host
     privileged: true
@@ -52,6 +53,9 @@ services:
     device_cgroup_rules:
       - 'c *:* rmw'
     command: >
-      bash -c "source /opt/ros/*/setup.bash &&
-               ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
-    restart: unless-stopped
+      bash -c "source /opt/ros/humble/setup.bash && tail -f /dev/null"
+    restart: on-failure
+
+              #  ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
+
+              #  ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"

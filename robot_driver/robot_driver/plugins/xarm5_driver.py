@@ -10,9 +10,7 @@ from std_msgs.msg import Header
 from builtin_interfaces.msg import Time, Duration
 from component_interfaces.msg import JointAngles, RobotState
 from core_bases.robot_driver_base import RobotDriverBase
-import hydra
 from omegaconf import OmegaConf, DictConfig
-from hydra.utils import instantiate
 import time
 import math
 

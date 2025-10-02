@@ -45,9 +45,17 @@ COPY core_bases ${WORKSPACE}/src/core_bases
 COPY component_interfaces ${WORKSPACE}/src/component_interfaces
 COPY system_interfaces ${WORKSPACE}/src/system_interfaces
 COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
+COPY config_files ${WORKSPACE}/src/config_files
 
 ## TODO: Copy your other packages here
 # COPY ./ ${WORKSPACE}/src/
+COPY feedback_data_processor ${WORKSPACE}/src/feedback_data_processor
+COPY feedback_projector_driver ${WORKSPACE}/src/feedback_projector_driver
+COPY feedback_sensor_driver ${WORKSPACE}/src/feedback_sensor_driver
+COPY input_data_processor ${WORKSPACE}/src/input_data_processor
+COPY input_sensor_driver ${WORKSPACE}/src/input_sensor_driver
+COPY motion_retarget ${WORKSPACE}/src/motion_retarget
+COPY robot_driver ${WORKSPACE}/src/robot_driver
 
 # Install rosdep dependencies
 WORKDIR ${WORKSPACE}

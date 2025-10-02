@@ -41,8 +41,10 @@
 platforms:
   - hardware_id: mac_pc
     containers:
-      - teleop-system
+      - name: teleop-system
+        node_count: 3
 
   - hardware_id: pi4-197
     containers:
-      - teleop-components
+      - name: teleop-components
+        node_count: 8
