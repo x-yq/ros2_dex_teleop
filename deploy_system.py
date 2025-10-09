@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Deployment script for distributed ROS2 system.
-Reads deployment.yaml and hardware.yaml to deploy containers across multiple platforms.
+Deployment script for distributed ROS2 system using docker-compose.
+Extended to support launching simulator container (--launch_env).
 """
 
 import yaml
@@ -21,48 +21,14 @@ class RemoteExecutor:
         self.local_mode = local_mode
     
     def execute(self, command: str, check: bool = True) -> subprocess.CompletedProcess:
-        """
-        Execute a command either locally or remotely via SSH.
-        
-        Args:
-            command: The command to execute
-            check: Whether to raise exception on non-zero exit code
-        
-        Returns:
-            CompletedProcess object
-        """
+        """Execute a command either locally or remotely via SSH."""
         if self.local_mode:
-            # Execute locally for now
             print(f"[LOCAL] Executing: {command}")
-            return subprocess.run(
-                command,
-                shell=True,
-                check=check,
-                capture_output=True,
-                text=True
-            )
+            return subprocess.run(command, shell=True, check=check, capture_output=True, text=True)
         else:
-            # Future: Execute via SSH
             ssh_command = f"ssh -p {self.port} {self.ip_address} '{command}'"
             print(f"[SSH {self.ip_address}] Executing: {command}")
-            return subprocess.run(
-                ssh_command,
-                shell=True,
-                check=check,
-                capture_output=True,
-                text=True
-            )
-    
-    def execute_interactive(self, command: str):
-        """Execute a command in interactive mode (for docker exec)."""
-        if self.local_mode:
-            print(f"[LOCAL INTERACTIVE] Executing: {command}")
-            return subprocess.run(command, shell=True)
-        else:
-            # Future: Execute via SSH with TTY allocation
-            ssh_command = f"ssh -t -p {self.port} {self.ip_address} '{command}'"
-            print(f"[SSH {self.ip_address} INTERACTIVE] Executing: {command}")
-            return subprocess.run(ssh_command, shell=True)
+            return subprocess.run(ssh_command, shell=True, check=check, capture_output=True, text=True)
 
 
 def load_yaml_config(file_path: str) -> Dict:
@@ -76,301 +42,185 @@ def load_yaml_config(file_path: str) -> Dict:
 
 
 def get_hardware_info(hardware_id: str, hardware_config: Dict) -> Optional[Dict]:
-    """
-    Get hardware information from hardware.yaml.
-    
-    Args:
-        hardware_id: The hardware identifier
-        hardware_config: Parsed hardware.yaml content
-    
-    Returns:
-        Dictionary with hardware info or None if not found
-    """
-    # Check execution platforms
+    """Get hardware information from hardware.yaml."""
     for platform in hardware_config.get('execution_plattforms', []):
         if platform['hardware_id'] == hardware_id:
             return platform
-    
-    # Check sensors
     for sensor in hardware_config.get('sensors', []):
         if sensor['hardware_id'] == hardware_id:
             return sensor
-    
-    # Check robots
     for robot in hardware_config.get('robots', []):
         if robot['hardware_id'] == hardware_id:
             return robot
-    
     return None
 
 
-def build_docker_image(executor: RemoteExecutor, dockerfile_path: str, image_tag: str) -> bool:
-    """
-    Build a Docker image from the specified Dockerfile.
-    
-    Args:
-        executor: RemoteExecutor instance
-        dockerfile_path: Path to the Dockerfile
-        image_tag: Tag for the built image
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    # Get the context directory (directory containing the Dockerfile)
-    context_dir = os.path.dirname(dockerfile_path) or '.'
-    
-    build_command = f"docker build -t {image_tag} -f {dockerfile_path} {context_dir}"
-    
-    try:
-        result = executor.execute(build_command)
-        print(f"✓ Successfully built Docker image: {image_tag}")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to build Docker image {image_tag}")
-        print(f"Error: {e.stderr}")
+def verify_docker_compose_services(compose_config: Dict, containers: List[str]) -> bool:
+    """Verify that all requested containers exist in docker-compose.yaml."""
+    services = compose_config.get('services', {})
+    missing = [c for c in containers if c not in services]
+    if missing:
+        print(f"✗ Missing containers in docker-compose.yaml: {', '.join(missing)}")
         return False
+    return True
 
 
-def run_docker_container(
+def deploy_containers(
     executor: RemoteExecutor,
-    container_config: Dict,
-    image_tag: str
+    containers: List[str],
+    ros_domain_id: str,
+    compose_file_path: str = "config_files/docker-compose.yaml",
+    extra_env: Optional[Dict[str, str]] = None
 ) -> bool:
-    """
-    Run a Docker container with the specified configuration.
-    
-    Args:
-        executor: RemoteExecutor instance
-        container_config: Container configuration from deployment.yaml
-        image_tag: Docker image tag to run
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    container_name = container_config['name']
-    
-    # Check if container already exists and remove it
-    check_cmd = f"docker ps -aq -f name={container_name}"
+    """Deploy specified containers using docker compose."""
+    success = True
+    extra_env = extra_env or {}
+
+    for container in containers:
+        print(f"\n--- Deploying container: {container} ---")
+        
+        # Combine environment variables
+        env_vars = f"ROS_DOMAIN_ID={ros_domain_id}"
+        for k, v in extra_env.items():
+            env_vars += f" {k}={v}"
+
+        # Docker compose command
+        compose_cmd = f"{env_vars} docker compose -f {compose_file_path} up -d {container}"
+        
+        try:
+            result = executor.execute(compose_cmd)
+            print(f"✓ Successfully deployed container: {container}")
+
+            # Show logs tail
+            logs_cmd = f"docker logs --tail 10 {container}"
+            log_result = executor.execute(logs_cmd, check=False)
+            if log_result.stdout:
+                print(f"Container logs:\n{log_result.stdout}")
+
+        except subprocess.CalledProcessError as e:
+            print(f"✗ Failed to deploy container: {container}")
+            print(f"Error: {e.stderr}")
+            success = False
+            continue
+
+    return success
+
+
+def stop_containers(executor: RemoteExecutor, containers: List[str], compose_file_path: str = "config_files/docker-compose.yaml") -> bool:
+    """Stop specified containers."""
+    print(f"\n--- Stopping containers: {', '.join(containers)} ---")
+    container_list = ' '.join(containers)
+    compose_cmd = f"docker compose -f {compose_file_path} stop {container_list}"
     try:
-        result = executor.execute(check_cmd, check=False)
-        if result.stdout.strip():
-            print(f"Removing existing container: {container_name}")
-            executor.execute(f"docker rm -f {container_name}", check=False)
-    except Exception as e:
-        print(f"Warning: Error checking for existing container: {e}")
-    
-    # Build docker run command
-    docker_cmd_parts = [
-        "docker run -d",
-        f"--name {container_name}",
-        
-        # Security and capability options
-        "--security-opt seccomp=unconfined",
-        "--cap-add SYS_PTRACE",
-        
-        # Working directory
-        "-w /root",
-        
-        # Volume mounts
-        "-v /tmp/argus_socket:/tmp/argus_socket",
-        "-v /var/run/docker.sock:/var/run/docker.sock",
-        "-v /run/udev:/run/udev",
-        "-v /dev:/dev",
-        
-        # Device cgroup rule
-        "--device-cgroup-rule='c *:* rmw'",
-    ]
-    
-    # Add environment variables
-    env_vars = container_config.get('env', {})
-    for key, value in env_vars.items():
-        docker_cmd_parts.append(f"-e {key}={value}")
-    
-    # Add network settings
-    network_config = container_config.get('network', {})
-    if network_config.get('ipc'):
-        docker_cmd_parts.append(f"--ipc={network_config['ipc']}")
-    if network_config.get('net'):
-        docker_cmd_parts.append(f"--network={network_config['net']}")
-    
-    # Add permissions
-    permissions = container_config.get('permissions', {})
-    if permissions.get('privileged'):
-        docker_cmd_parts.append("--privileged")
-    
-    # Add image tag
-    docker_cmd_parts.append(image_tag)
-    
-    # Keep container running
-    docker_cmd_parts.append("tail -f /dev/null")
-    
-    docker_cmd = " ".join(docker_cmd_parts)
-    
-    try:
-        result = executor.execute(docker_cmd)
-        print(f"✓ Successfully started container: {container_name}")
+        executor.execute(compose_cmd)
+        print("✓ Successfully stopped containers")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to start container {container_name}")
-        print(f"Error: {e.stderr}")
-        return False
-
-
-def launch_ros_nodes(
-    executor: RemoteExecutor,
-    container_name: str,
-    launch_file_path: str,
-    ros_domain_id: str = "0"
-) -> bool:
-    """
-    Execute the ROS2 launch file inside the container.
-    
-    Args:
-        executor: RemoteExecutor instance
-        container_name: Name of the running container
-        launch_file_path: Path to the launch file
-        ros_domain_id: ROS 2 Domain ID
-    
-    Returns:
-        True if successful, False otherwise
-    """
-    # Prepare the launch command
-    launch_cmd = f"ros2 launch {launch_file_path} ros_domain_id:={ros_domain_id}"
-    
-    # Execute inside container
-    docker_exec_cmd = f"docker exec -d {container_name} bash -c 'source /opt/ros/*/setup.bash && {launch_cmd}'"
-    
-    try:
-        result = executor.execute(docker_exec_cmd)
-        print(f"✓ Successfully launched ROS nodes in container: {container_name}")
-        print(f"  Launch file: {launch_file_path}")
-        return True
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to launch ROS nodes in container {container_name}")
-        print(f"Error: {e.stderr}")
+        print(f"✗ Failed to stop containers: {e.stderr}")
         return False
 
 
 def deploy_platform(
     platform_config: Dict,
     hardware_config: Dict,
-    deployment_config: Dict,
+    compose_config: Dict,
     local_mode: bool = True,
-    ros_domain_id: str = "0"
+    ros_domain_id: str = "0",
+    compose_file_path: str = "config_files/docker-compose.yaml",
+    stop_only: bool = False,
+    launch_env: bool = False
 ):
-    """
-    Deploy all containers for a specific hardware platform.
-    
-    Args:
-        platform_config: Platform configuration from deployment.yaml
-        hardware_config: Full hardware.yaml configuration
-        deployment_config: Full deployment.yaml configuration
-        local_mode: Whether to execute locally or via SSH
-        ros_domain_id: ROS 2 Domain ID
-    """
+    """Deploy all containers for a specific hardware platform."""
     hardware_id = platform_config['hardware_id']
-    print(f"\n{'='*60}")
-    print(f"Deploying platform: {hardware_id}")
-    print(f"{'='*60}")
-    
-    # Get hardware information
-    hw_info = get_hardware_info(hardware_id, hardware_config)
-    if not hw_info:
-        print(f"✗ Hardware {hardware_id} not found in hardware.yaml")
-        return
-    
-    # Check if this is an execution platform
-    is_execution_platform = hw_info.get('execution_plattform', False)
-    if not is_execution_platform:
-        print(f"✗ Hardware {hardware_id} is not an execution platform, skipping deployment")
-        return
-    
-    ip_address = hw_info.get('ip', '127.0.0.1')
-    access_port = hw_info.get('access_port', 22)
-    
-    print(f"Target IP: {ip_address}:{access_port}")
-    
-    # Create remote executor
-    executor = RemoteExecutor(ip_address, access_port, local_mode)
-    
-    # Deploy each container
     containers = platform_config.get('containers', [])
-    for container_config in containers:
-        container_name = container_config['name']
-        print(f"\n--- Deploying container: {container_name} ---")
-        
-        # Get Dockerfile path
-        dockerfile_path = container_config.get('dockerfile')
-        if not dockerfile_path:
-            print(f"✗ No dockerfile specified for container {container_name}")
-            continue
-        
-        # Build Docker image
-        image_tag = f"{container_name}:latest"
-        if not build_docker_image(executor, dockerfile_path, image_tag):
-            print(f"✗ Skipping container {container_name} due to build failure")
-            continue
-        
-        # Run Docker container
-        if not run_docker_container(executor, container_config, image_tag):
-            print(f"✗ Skipping launch for container {container_name} due to run failure")
-            continue
-        
-        # Launch ROS nodes
-        launch_file_path = container_config.get('launch_file_path')
-        if launch_file_path:
-            launch_ros_nodes(executor, container_name, launch_file_path, ros_domain_id)
-        else:
-            print(f"Warning: No launch_file_path specified for container {container_name}")
-        
-        print(f"✓ Container {container_name} deployed successfully")
+    if not containers:
+        print(f"✗ No containers specified for platform {hardware_id}")
+        return
+
+    # Identify environment container
+    env_containers = [c for c in containers if isinstance(c, dict) and c.get('name') == 'environment']
+    normal_containers = [c for c in containers if not (isinstance(c, dict) and c.get('name') == 'environment')]
+
+    # Determine which to deploy
+    if launch_env:
+        if not env_containers:
+            print(f"✗ No environment container defined in {hardware_id}")
+            return
+        target_containers = env_containers
+        print(f"Launching simulator on host (ignoring hardware_id {hardware_id})")
+    else:
+        target_containers = normal_containers
+        if not target_containers:
+            print(f"No non-environment containers for {hardware_id}, skipping")
+            return
+
+    container_names = [c.get('name') if isinstance(c, dict) else c for c in target_containers]
+    print(f"Containers to deploy: {', '.join(container_names)}")
+
+    # Verify existence in compose file
+    if not verify_docker_compose_services(compose_config, container_names):
+        print(f"✗ Cannot deploy {hardware_id}: container missing in compose file")
+        return
+
+    # Create executor
+    # Simulator always runs locally
+    local_executor = True if launch_env else local_mode
+    ip_address = "127.0.0.1" if launch_env else "127.0.0.1"
+    executor = RemoteExecutor(ip_address, 22, local_executor)
+
+    # Add simulator arguments if launching environment
+    extra_env = {}
+    if launch_env and env_containers:
+        env_info = env_containers[0]
+        robot = env_info.get('robot', 'unknown')
+        gripper = env_info.get('eef', 'unknown')
+        extra_env['ROBOT'] = robot
+        extra_env['GRIPPER'] = gripper
+        print(f"→ Passing simulator args: ROBOT={robot}, GRIPPER={gripper}")
+
+    if stop_only:
+        stop_containers(executor, container_names, compose_file_path)
+    else:
+        deploy_containers(executor, container_names, ros_domain_id, compose_file_path, extra_env)
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Deploy distributed ROS2 system')
-    parser.add_argument(
-        '--ros-domain-id',
-        default='0',
-        help='ROS 2 Domain ID'
-    )
-    parser.add_argument(
-        '--local-mode',
-        action='store_true',
-        default=True,
-        help='Execute locally instead of via SSH (default: True)'
-    )
-    
+    parser = argparse.ArgumentParser(description='Deploy distributed ROS2 system using docker-compose')
+    parser.add_argument('--ros-domain-id', default='0', help='ROS 2 Domain ID')
+    parser.add_argument('--local-mode', action='store_true', default=True, help='Run locally (default)')
+    parser.add_argument('--stop', action='store_true', help='Stop containers')
+    parser.add_argument('--launch-env', action='store_true', help='Launch simulator/environment container on host')
+
     args = parser.parse_args()
-    
-    # Hardcoded config file paths
-    deployment_config_path = './config_files/deployment.yaml'
-    hardware_config_path = './config_files/hardware.yaml'
-    
-    # Load configurations
+
+    compose_file = 'config_files/docker-compose.yaml'
+    deployment_config_path = 'config_files/deployment.yaml'
+    hardware_config_path = 'config_files/hardware.yaml'
+
     print("Loading configuration files...")
-    print(f"  Deployment config: {deployment_config_path}")
-    print(f"  Hardware config: {hardware_config_path}")
-    
     deployment_config = load_yaml_config(deployment_config_path)
     hardware_config = load_yaml_config(hardware_config_path)
-    
-    print(f"Loaded {len(deployment_config.get('platforms', []))} platforms from deployment config")
-    
-    # Deploy platforms
+    compose_config = load_yaml_config(compose_file)
+
     platforms = deployment_config.get('platforms', [])
-    
+    print(f"Loaded {len(platforms)} platforms")
+
+    # Deploy platforms based on launch_env flag
     for platform_config in platforms:
         deploy_platform(
             platform_config,
             hardware_config,
-            deployment_config,
+            compose_config,
             args.local_mode,
-            args.ros_domain_id
+            args.ros_domain_id,
+            compose_file,
+            args.stop,
+            args.launch_env
         )
-    
-    print(f"\n{'='*60}")
-    print("Deployment complete!")
-    print(f"{'='*60}")
+
+    print("\n" + "="*60)
+    print(f"{'Stop' if args.stop else 'Deployment'} complete!")
+    print("="*60)
 
 
 if __name__ == "__main__":

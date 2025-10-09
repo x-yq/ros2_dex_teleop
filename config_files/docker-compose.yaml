@@ -1,4 +1,8 @@
 services:
+  # teleop-env:
+  #   build:
+  #     context: ..
+  #     dockerfile: xxx
 
   teleop-system:
     build:
@@ -56,6 +60,38 @@ services:
       bash -c "source /opt/ros/humble/setup.bash && tail -f /dev/null"
     restart: on-failure
 
-              #  ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
+              #  ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}
+              #  ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}
 
-              #  ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}"
+  simulator:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.simulation
+    network_mode: "host"
+    ipc: "host"
+    security_opt:
+      - seccomp=unconfined
+    privileged: true
+    working_dir: /root
+    stdin_open: true
+    tty: true
+    environment:
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=${HOME}/.Xauthority
+      - ROS_DISTRO=humble
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      # - .:/src
+      - ${HOME}/.Xauthority:${HOME}/.Xauthority
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
+      - /tmp/argus_socket:/tmp/argus_socket
+      - /run/udev:/run/udev
+      - /dev:/dev
+    cap_add:
+      - SYS_PTRACE
+    devices:
+      - /dev
+    device_cgroup_rules:
+      - 'c *:* rmw'
+    command: ["bash", "-c", "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && python3 /src/simulated_env_launcher.py"]
+

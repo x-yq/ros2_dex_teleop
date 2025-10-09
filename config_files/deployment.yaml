@@ -48,3 +48,10 @@ platforms:
     containers:
       - name: teleop-components
         node_count: 8
+
+  - hardware_id: x86_pc
+    containers:
+      - name: environment
+        simulator_name: gazebo
+        robot: xarm5
+        eef: xarm_gripper

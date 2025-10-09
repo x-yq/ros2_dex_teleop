@@ -1,0 +1,65 @@
+FROM osrf/ros:humble-desktop-full
+
+# Set working directory
+WORKDIR /root/
+
+# Suppress specific Python warnings
+ENV PYTHONWARNINGS="ignore:easy_install command is deprecated,ignore:setup.py install is deprecated"
+
+# Define directory-related environment variables
+ENV SRC="/src" \
+    WS="/root/dev_ws/" \
+    WS_SRC="/root/dev_ws/src" \
+    ROS_LOG_DIR="/src/log/"
+
+# Accept build-time arguments
+ARG DEV
+ENV DEV=${DEV}
+
+# Install essential tools and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    software-properties-common \
+    git \
+    python3-pip \
+    ros-humble-ros-gz \
+    ros-humble-moveit \
+    ros-humble-gazebo-ros \
+    ros-humble-gazebo-ros-pkgs \
+    ros-humble-filters \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Initialize rosdep safely (ignore if already done)
+RUN rosdep init 2>/dev/null || true && rosdep update
+
+# === Set up ROS 2 workspace ===
+RUN echo "Creating ROS workspace..." && \
+    rm -rf ${WS} && mkdir -p ${WS_SRC}
+
+# === Clone xarm_ros2 ===
+RUN cd ${WS_SRC} && \
+    git clone https://github.com/xArm-Developer/xarm_ros2.git --recursive -b humble && \
+    cd xarm_ros2 && \
+    git pull && git submodule sync && git submodule update --init --remote
+
+# === Install dependencies ===
+RUN apt-get update && \
+    rosdep install --from-paths ${WS_SRC} --ignore-src -y --rosdistro humble && \
+    rm -rf /var/lib/apt/lists/*
+
+# === Build the workspace ===
+SHELL ["/bin/bash", "-c"]
+RUN if [ -d "/opt/ros/humble/install" ]; then \
+        source /opt/ros/humble/install/setup.bash; \
+    else \
+        source /opt/ros/humble/setup.bash; \
+    fi && \
+    echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
+    cd ${WS} && \
+    colcon build && \
+    echo "source ${WS}install/setup.bash" >> ~/.bashrc
+
+# === Final stage: set up runtime ===
+WORKDIR ${SRC}
+COPY simulated_env_launcher.py ${SRC}/
+
+CMD ["/bin/bash", "-c", "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash"]
