@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     software-properties-common \
     git \
     python3-pip \
+    python3-psutil \
     ros-humble-ros-gz \
     ros-humble-moveit \
     ros-humble-gazebo-ros \
