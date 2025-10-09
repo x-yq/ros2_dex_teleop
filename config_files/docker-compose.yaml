@@ -79,6 +79,8 @@ services:
       - DISPLAY=${DISPLAY}
       - XAUTHORITY=${HOME}/.Xauthority
       - ROS_DISTRO=humble
+      - ROBOT=xarm5
+      - EEF=xarm
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       # - .:/src

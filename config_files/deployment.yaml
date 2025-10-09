@@ -51,7 +51,7 @@ platforms:
 
   - hardware_id: x86_pc
     containers:
-      - name: environment
+      - name: simulator
         simulator_name: gazebo
         robot: xarm5
         eef: xarm_gripper

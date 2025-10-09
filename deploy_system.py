@@ -138,20 +138,20 @@ def deploy_platform(
         return
 
     # Identify environment container
-    env_containers = [c for c in containers if isinstance(c, dict) and c.get('name') == 'environment']
-    normal_containers = [c for c in containers if not (isinstance(c, dict) and c.get('name') == 'environment')]
+    env_containers = [c for c in containers if isinstance(c, dict) and c.get('name') == 'simulator']
+    normal_containers = [c for c in containers if not (isinstance(c, dict) and c.get('name') == 'simulator')]
 
     # Determine which to deploy
     if launch_env:
         if not env_containers:
-            print(f"✗ No environment container defined in {hardware_id}")
+            print(f"✗ No simulator container defined in {hardware_id}")
             return
         target_containers = env_containers
         print(f"Launching simulator on host (ignoring hardware_id {hardware_id})")
     else:
         target_containers = normal_containers
         if not target_containers:
-            print(f"No non-environment containers for {hardware_id}, skipping")
+            print(f"No non-simulator containers for {hardware_id}, skipping")
             return
 
     container_names = [c.get('name') if isinstance(c, dict) else c for c in target_containers]
@@ -168,7 +168,7 @@ def deploy_platform(
     ip_address = "127.0.0.1" if launch_env else "127.0.0.1"
     executor = RemoteExecutor(ip_address, 22, local_executor)
 
-    # Add simulator arguments if launching environment
+    # Add simulator arguments if launching simulator
     extra_env = {}
     if launch_env and env_containers:
         env_info = env_containers[0]
