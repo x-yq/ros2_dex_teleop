@@ -58,7 +58,7 @@ def launch_setup(context, *args, **kwargs):
     geometry_mesh_tcp_rpy = LaunchConfiguration('geometry_mesh_tcp_rpy', default='"0 0 0"')
     kinematics_suffix = LaunchConfiguration('kinematics_suffix', default='')
     
-    load_controller = LaunchConfiguration('load_controller', default=False)
+    load_controller = LaunchConfiguration('load_controller', default=True)
     show_rviz = LaunchConfiguration('show_rviz', default=False)
     no_gui_ctrl = LaunchConfiguration('no_gui_ctrl', default=False)
 
@@ -194,7 +194,12 @@ def launch_setup(context, *args, **kwargs):
     # Load controllers
     controllers = [
         'joint_state_broadcaster',
-        '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
+        'cartesian_motion_controller',
+        # '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
+        # 'cartesian_impedance_controller',
+        # 'pose_broadcaster',
+        # 'gravity_compensation',
+        # 'joint_impedance_controller',
     ]
     if robot_type.perform(context) != 'lite' and add_gripper.perform(context) in ('True', 'true'):
         controllers.append('{}{}_gripper_traj_controller'.format(prefix.perform(context), robot_type.perform(context)))

@@ -1,70 +1,295 @@
+# controller_manager:
+#   ros__parameters:
+#     update_rate: 500  # Hz - Increased for better performance with impedance control
+
+#     joint_state_broadcaster:
+#       type: joint_state_broadcaster/JointStateBroadcaster
+
+#     xarm5_traj_controller:
+#       type: joint_trajectory_controller/JointTrajectoryController
+    
+#     cartesian_impedance_controller:
+#       type: crisp_controllers/CartesianController
+
+#     pose_broadcaster:
+#       type: crisp_controllers/PoseBroadcaster
+
+#     gravity_compensation:
+#       type: crisp_controllers/CartesianController
+
+#     joint_impedance_controller:
+#       type: crisp_controllers/CartesianController
+
+# xarm5_traj_controller:
+#   ros__parameters:
+#     command_interfaces:
+#       - position
+#       - velocity
+#     state_interfaces:
+#       - position
+#       - velocity
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     constraints:
+#       goal_time: 0.5
+#       stopped_velocity_tolerance: 0.0
+#       joint1: {trajectory: 1.0, goal: 0.01}
+#       joint2: {trajectory: 1.0, goal: 0.01}
+#       joint3: {trajectory: 1.0, goal: 0.01}
+#       joint4: {trajectory: 1.0, goal: 0.01}
+#       joint5: {trajectory: 1.0, goal: 0.01}
+#     interface_name: position
+#     state_publish_rate: 25.0
+#     action_monitor_rate: 10.0
+
+# cartesian_impedance_controller:
+#   ros__parameters:
+#     command_interfaces:
+#       - effort
+#     state_interfaces:
+#       - position
+#       - velocity
+#       - effort
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     base_frame: link_base
+#     end_effector_frame: link5
+        
+#     filter:
+#       q: 0.5
+#       dq: 0.5
+#       output_torque: 0.5
+
+#     task:
+#       k_pos_x: 300.0
+#       k_pos_y: 300.0
+#       k_pos_z: 300.0
+#       k_rot_x: 30.0
+#       k_rot_y: 30.0
+#       k_rot_z: 30.0
+
+#     nullspace:
+#       stiffness: 2.0
+#       damping: 0.5
+#       max_tau: 50.0
+#       regularization: 1.0e-06
+
+#     log:
+#       enabled: true
+#       timing: true
+
+#     use_friction: false
+#     use_coriolis_compensation: true
+#     use_local_jacobian: true
+#     limit_error: true
+#     limit_torques: true
+#     max_delta_tau: 1.0
+
+# torque_feedback_controller:
+#   ros__parameters:
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     base_frame: link_base
+#     end_effector_frame: link5
+
+# pose_broadcaster:
+#   ros__parameters:
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     base_frame: link_base
+#     end_effector_frame: link5
+
+# twist_broadcaster:
+#   ros__parameters:
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     end_effector_frame: link5
+#     base_frame: link_base
+
+# gravity_compensation:
+#   ros__parameters:
+#     command_interfaces:
+#       - effort
+#     state_interfaces:
+#       - position
+#       - velocity
+#       - effort
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     end_effector_frame: link5
+#     base_frame: link_base
+
+#     task:
+#       k_pos_x: 0.0
+#       k_pos_y: 0.0
+#       k_pos_z: 0.0
+#       k_rot_x: 30.0
+#       k_rot_y: 30.0
+#       k_rot_z: 30.0
+
+#     nullspace: 
+#       stiffness: 0.0
+#       damping: 0.5
+#       max_tau: 50.0
+#       regularization: 1.0e-06
+
+#     use_friction: true
+#     use_coriolis_compensation: true
+#     use_local_jacobian: true
+#     limit_error: true
+#     limit_torques: true
+#     max_delta_tau: 1.0
+
+# joint_impedance_controller:
+#   ros__parameters:
+#     command_interfaces:
+#       - effort
+#     state_interfaces:
+#       - position
+#       - velocity
+#       - effort
+#     joints:
+#       - joint1
+#       - joint2
+#       - joint3
+#       - joint4
+#       - joint5
+#     end_effector_frame: link5
+#     base_frame: link_base
+
+#     task:
+#       k_pos_x: 0.0
+#       k_pos_y: 0.0
+#       k_pos_z: 0.0
+#       k_rot_x: 0.0
+#       k_rot_y: 0.0
+#       k_rot_z: 0.0
+
+#     max_delta_tau: 0.5
+
+#     nullspace: 
+#       stiffness: 5.0
+#       projector_type: none  # Direct joint control
+#       damping: 0.5
+#       max_tau: 50.0
+#       regularization: 1.0e-06
+#       weights:
+#         joint1.value: 150.0
+#         joint2.value: 150.0
+#         joint3.value: 150.0
+#         joint4.value: 150.0
+#         joint5.value: 150.0
+#     use_friction: true
+#     use_coriolis_compensation: true
+#     use_local_jacobian: true
+#     limit_error: true
+#     limit_torques: true
+
 controller_manager:
   ros__parameters:
-    update_rate: 150  # Hz
+    update_rate: 100  # Start with lower rate for debugging
 
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    xarm5_traj_controller:
-      type: joint_trajectory_controller/JointTrajectoryController
+    pose_broadcaster:
+      type: crisp_controllers/PoseBroadcaster
 
-    xarm5_crisp_cartesian_impedance_controller:
+    cartesian_impedance_controller:
       type: crisp_controllers/CartesianController
+    
+    cartesian_motion_controller:
+      type: cartesian_motion_controller/CartesianMotionController
 
-xarm5_traj_controller:
+# Pose broadcaster - simplest crisp controller
+pose_broadcaster:
   ros__parameters:
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+    base_frame: "link_base"
+    end_effector_frame: "link5"
+    # Note: some versions use 'base_frame' and 'end_effector_frame'
+    # Try the alternate naming if this doesn't work
+
+# Cartesian impedance controller
+cartesian_impedance_controller:
+  ros__parameters:
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+    base_frame: "link_base"
+    end_effector_frame: "link5"
+    
+    # Minimal task stiffness
+    task:
+      stiffness:
+        trans_x: 100.0
+        trans_y: 100.0
+        trans_z: 100.0
+        rot_x: 10.0
+        rot_y: 10.0
+        rot_z: 10.0
+    
+    # Minimal nullspace config
+    nullspace:
+      stiffness: 1.0
+
+
+cartesian_motion_controller:
+  ros__parameters:
+    end_effector_link: "link5"
+    robot_base_link: "link_base"
+    joints:
+      - joint1
+      - joint2
+      - joint3
+      - joint4
+      - joint5
+
+    # Choose: position or velocity.
     command_interfaces:
       - position
-      - velocity
-    state_interfaces:
-      - position
-      - velocity
-    joints:
-      - joint1
-      - joint2
-      - joint3
-      - joint4
-      - joint5
-    constraints:
-      goal_time: 0.5
-      stopped_velocity_tolerance: 0.0
-      joint1: {trajectory: 1.0, goal: 0.01}
-      joint2: {trajectory: 1.0, goal: 0.01}
-      joint3: {trajectory: 1.0, goal: 0.01}
-      joint4: {trajectory: 1.0, goal: 0.01}
-      joint5: {trajectory: 1.0, goal: 0.01}
-    interface_name: position
-    state_publish_rate: 25.0
-    action_monitor_rate: 10.0
+        #- velocity
 
-xarm5_crisp_cartesian_impedance_controller:
-  ros__parameters:
-    joints:
-      - joint1
-      - joint2
-      - joint3
-      - joint4
-      - joint5
+    solver:
+        error_scale: 1.0
+        iterations: 10
 
-    end_effector_frame: link_tcp
-    base_frame: base_link
-
-    task:
-      k_pos_x: 300.0
-      k_pos_y: 300.0
-      k_pos_z: 300.0
-      k_rot_x: 30.0
-      k_rot_y: 30.0
-      k_rot_z: 30.0
-
-    filter:
-      q: 0.5
-      dq: 0.5
-      output_torque: 0.5
-
-    nullspace:
-      stiffness: 2.0
-
-    use_friction: false
-    use_coriolis_compensation: true
-    use_local_jacobian: true
+    pd_gains:
+        trans_x: {p: 1.0}
+        trans_y: {p: 1.0}
+        trans_z: {p: 1.0}
+        rot_x: {p: 0.5}
+        rot_y: {p: 0.5}
+        rot_z: {p: 0.5}
