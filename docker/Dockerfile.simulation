@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-gazebo-ros \
     ros-humble-gazebo-ros-pkgs \
     ros-humble-filters \
+    ros-humble-ros2-control \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Initialize rosdep safely (ignore if already done)
@@ -36,11 +37,14 @@ RUN rosdep init 2>/dev/null || true && rosdep update
 RUN echo "Creating ROS workspace..." && \
     rm -rf ${WS} && mkdir -p ${WS_SRC}
 
-# === Clone xarm_ros2 ===
-RUN cd ${WS_SRC} && \
-    git clone https://github.com/xArm-Developer/xarm_ros2.git --recursive -b humble && \
-    cd xarm_ros2 && \
-    git pull && git submodule sync && git submodule update --init --remote
+# # === Clone xarm_ros2 ===
+# RUN cd ${WS_SRC} && \
+#     git clone https://github.com/xArm-Developer/xarm_ros2.git --recursive -b humble && \
+#     cd xarm_ros2 && \
+#     git pull && git submodule sync && git submodule update --init --remote
+
+COPY crisp_controllers ${WS_SRC}/crisp_controllers
+COPY xarm_ros2 ${WS_SRC}/xarm_ros2
 
 # === Install dependencies ===
 RUN apt-get update && \

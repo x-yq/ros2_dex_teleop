@@ -95,5 +95,5 @@ services:
       - /dev
     device_cgroup_rules:
       - 'c *:* rmw'
-    command: ["bash", "-c", "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && python3 /src/simulated_env_launcher.py"]
+    command: ["bash", "-c", "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && tail -f /dev/null"] # python3 /src/simulated_env_launcher.py"]
 

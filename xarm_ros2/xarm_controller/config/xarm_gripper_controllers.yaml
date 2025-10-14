@@ -1,0 +1,46 @@
+controller_manager:
+  ros__parameters:
+    # only for fake control
+    xarm_gripper_traj_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
+
+# only for fake control
+xarm_gripper_traj_controller:
+  ros__parameters:
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    joints:
+      - drive_joint
+    interface_name: position
+
+
+# xarm5_crisp_cartesian_impednace_controller:
+#   ros__parameters:
+#     joints:
+#       - drive_joint
+
+#     end_effector_frame: right_finger
+#     base_frame: xarm_gripper_base_link
+
+#     task:
+#       k_pos_x: -0.2
+#       k_pos_y: -0.5
+#       k_pos_z: 1.0
+#       k_rot_x: 0.0
+#       k_rot_y: 0.0
+#       k_rot_z: 0.0
+
+#     filter:
+#       q: 0.5
+#       dq: 0.5
+#       output_torque: 0.5
+
+#     nullspace:
+#       stiffness: 2.0
+
+#     use_friction: false
+#     use_coriolis_compensation: true
+#     use_local_jacobian: true
