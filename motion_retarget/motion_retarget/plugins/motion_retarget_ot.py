@@ -8,6 +8,7 @@ from rclpy.subscription import Subscription
 import tf2_ros
 import tf2_geometry_msgs
 import math
+import time
 
 # Import message types based on the interface definitions
 from component_interfaces.msg import (
@@ -25,9 +26,11 @@ class MotionRetargetOT(MotionRetargetBase):
         # Additional attributes for this specific retargeter
         self.processing_frequency = 90  # Hz
         self.retargeting_counter = 0
+        self.relative = True
+        self.space = "joint"
         
         # Robot-specific parameters
-        self.robot_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint_eef"]
+        self.robot_joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5"]
         self.robot_joint_limits = [
             (-3.14, 3.14), (-2.0, 2.0), (-3.14, 3.14), 
             (-3.14, 3.14), (-3.14, 3.14)
@@ -48,6 +51,8 @@ class MotionRetargetOT(MotionRetargetBase):
                     if plugin.get('id') == 'motion_retarget_ot':
                         plugin_params = plugin.get('params', {})
                         self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
+                        self.relative = plugin_params.get("relative", self.relative)
+                        self.space = plugin_params.get("space", self.space)
                         self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
                         break
                 
@@ -116,68 +121,94 @@ class MotionRetargetOT(MotionRetargetBase):
             transforms = self._get_required_transforms()
             
             # Retarget control data to robot space
-            joint_angles_msg = self.retarget_control_to_robot_space(hand_data, transforms)
+            cmd_msg = self.retarget_control_to_robot_space(hand_data, transforms)
+            self.publish_robot_commands(cmd_msg)
             
-            # Publish robot command
-            self.publish_msg("joint_angles_cmd", joint_angles_msg)
+            # # Publish robot command
+            # self.publish_msg("joint_angles_cmd", joint_angles_msg)
             
             self.get_logger().debug("Hand data retargeting completed successfully")
             
         except Exception as e:
             self.handle_error(f"Error retargeting hand data: {str(e)}")
     
-    def quaternion_to_euler(self, quat):
-        """Convert quaternion to Euler angles using tf2-compatible method"""
-        self.get_logger().debug(f"quaternion_to_euler received: {quat}, type: {type(quat)}")
-        
-        try:
-            # Extract quaternion components
-            x, y, z, w = quat.x, quat.y, quat.z, quat.w
-            
-            # Convert quaternion to Euler angles (roll, pitch, yaw)
-            t0 = 2.0 * (w * x + y * z)
-            t1 = 1.0 - 2.0 * (x * x + y * y)
-            roll = math.atan2(t0, t1)
-            
-            t2 = 2.0 * (w * y - z * x)
-            t2 = 1.0 if t2 > 1.0 else t2
-            t2 = -1.0 if t2 < -1.0 else t2
-            pitch = math.asin(t2)
-            
-            t3 = 2.0 * (w * z + x * y)
-            t4 = 1.0 - 2.0 * (y * y + z * z)
-            yaw = math.atan2(t3, t4)
-            
-            return roll, pitch, yaw
-            
-        except Exception as e:
-            self.handle_error(f"quaternion_to_euler failed: {e}")
-            raise
 
-    def retarget_control_to_robot_space(
-        self, control_data: ProcessedHandKeypoint, transforms: Dict[str, Any]
-    ) -> ControlCmd:
+    def retarget_control_to_robot_space(self, hand_data=None, transforms=None):
         """
-        Simple dummy implementation that returns basic joint angles.
+        Generate dummy control commands in joint, cartesian, and gripper space.
+        This version is for testing communication with the robot driver.
+        Returns a dictionary of ControlCmd messages keyed by command type.
         """
-        joint_angles_msg = ControlCmd()
-        joint_angles_msg.header = control_data.header
-        joint_angles_msg.header.stamp = self.get_clock().now().to_msg()
-        joint_angles_msg.robot_id = "xarm5_robot"
-        joint_angles_msg.joint_names = self.robot_joint_names
-        joint_angles_msg.timeout = Duration(sec=1, nanosec=0)
 
-        # Simple dummy joint angles (in radians)
-        if len(self.robot_joint_names) == 5:
-            joint_angles_msg.joint_angles = [0.1, -0.2, 0.3, 0.0, 0.1]
-        elif len(self.robot_joint_names) == 6:
-            joint_angles_msg.joint_angles = [0.1, -0.2, 0.3, 0.0, 0.1, -0.05]
+        t = time.time()
+
+        # --- Base header ---
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id="xarm5_robot")
+
+        if self.space == 'joint':
+            # --- 1. Joint-space command ---
+            robot_cmd = ControlCmd()
+            robot_cmd.header = header
+            # robot_cmd.send_id = f"dummy_joint_{int(t)}"
+            robot_cmd.robot_id = "xarm5"
+            robot_cmd.relative = self.relative
+            robot_cmd.space = self.space
+            robot_cmd.joint_names = self.robot_joint_names
+            robot_cmd.joint_angles = [0.2 * math.sin(t + i) for i in range(5)]
+            robot_cmd.joint_velocities = [0.3] * 5
+            robot_cmd.pose = Pose()
+            robot_cmd.timeout = Duration(sec=2)
+
         else:
-            joint_angles_msg.joint_angles = [0.0] * len(self.robot_joint_names)
-        
-        joint_angles_msg.joint_velocities = [0.5] * len(joint_angles_msg.joint_angles)
-        
-        return joint_angles_msg
+            # --- 2. Cartesian-space command ---
+            robot_cmd = ControlCmd()
+            robot_cmd.header = header
+            # robot_cmd.send_id = f"dummy_cartesian_{int(t)}"
+            robot_cmd.robot_id = "xarm5"
+            robot_cmd.relative = self.relative
+            robot_cmd.space = self.space
+            robot_cmd.pose = Pose()
+            robot_cmd.pose.position.x = 0.4 + 0.05 * math.cos(t)
+            robot_cmd.pose.position.y = 0.2 + 0.05 * math.sin(t)
+            robot_cmd.pose.position.z = 0.3
+            robot_cmd.pose.orientation.w = 1.0
+            robot_cmd.timeout = Duration(sec=2)
+
+        # --- 3. Gripper command ---
+        grip_cmd = ControlCmd()
+        grip_cmd.header = header
+        # grip_cmd.send_id = f"dummy_gripper_{int(t)}"
+        grip_cmd.robot_id = "xarm5"
+        grip_cmd.relative = self.relative
+        grip_cmd.space = "joint"
+        grip_cmd.joint_names = ["drive_joint"]
+        grip_cmd.joint_angles = [0.8 if (int(t) % 2 == 0) else 0.0]
+        grip_cmd.joint_velocities = [0.3]
+        grip_cmd.pose = Pose()
+        grip_cmd.timeout = Duration(sec=2)
+
+        # Return dictionary for selective publishing
+        return {
+            "robot_cmd": robot_cmd,
+            "gripper_cmd": grip_cmd,
+        }
+
+
+    def publish_robot_commands(self, cmd_dict):
+        """
+        Publish given ControlCmd messages to their respective topics.
+        """
+        try:
+            if "robot_cmd" in cmd_dict:
+                self.robot_control_pub.publish(cmd_dict["robot_cmd"])
+                self.get_logger().info("Published dummy robot command")
+
+            if "gripper_cmd" in cmd_dict:
+                self.gripper_control_pub.publish(cmd_dict["gripper_cmd"])
+                self.get_logger().info("Published dummy gripper command")
+
+        except Exception as e:
+            self.handle_error(f"Error publishing control commands: {str(e)}")
 
     def _apply_joint_limit(self, angle: float, joint_index: int) -> float:
         """Apply joint limits to a given angle"""
@@ -270,6 +301,34 @@ class MotionRetargetOT(MotionRetargetBase):
         translated_vec = rotated_vec + np.array([tx, ty, tz])
         
         return Point(x=translated_vec[0], y=translated_vec[1], z=translated_vec[2])
+
+    def quaternion_to_euler(self, quat):
+        """Convert quaternion to Euler angles using tf2-compatible method"""
+        self.get_logger().debug(f"quaternion_to_euler received: {quat}, type: {type(quat)}")
+        
+        try:
+            # Extract quaternion components
+            x, y, z, w = quat.x, quat.y, quat.z, quat.w
+            
+            # Convert quaternion to Euler angles (roll, pitch, yaw)
+            t0 = 2.0 * (w * x + y * z)
+            t1 = 1.0 - 2.0 * (x * x + y * y)
+            roll = math.atan2(t0, t1)
+            
+            t2 = 2.0 * (w * y - z * x)
+            t2 = 1.0 if t2 > 1.0 else t2
+            t2 = -1.0 if t2 < -1.0 else t2
+            pitch = math.asin(t2)
+            
+            t3 = 2.0 * (w * z + x * y)
+            t4 = 1.0 - 2.0 * (y * y + z * z)
+            yaw = math.atan2(t3, t4)
+            
+            return roll, pitch, yaw
+            
+        except Exception as e:
+            self.handle_error(f"quaternion_to_euler failed: {e}")
+            raise
 
     def urgent_stop(self):
         """Emergency stop implementation"""
