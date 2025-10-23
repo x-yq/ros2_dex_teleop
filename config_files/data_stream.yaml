@@ -6,7 +6,6 @@ topics:
     frame_id: rococo # must be one of the frame ids defined in the calibration.yaml
     publisher: input_sensor_driver_rococo  ## must be layer_cn_id
     subscribers: [input_control_data_processor] # could be multi subscribers
-    shape: (6,1) # for data collection based on robo-dm
     dtype: float32 # for data collection based on robo-dm
   
   - id: right_hand_keypoint_processed # also topic name
@@ -16,20 +15,35 @@ topics:
     frame_id: rococo # must be one of the frame ids defined in the calibration.yaml
     publisher: input_control_data_processor ## must be layer_cn_id
     subscribers: [motion_retarget, feedback_data_processor] # could be multi subscribers
-    shape: (4,4) # for data collection based on robo-dm
     dtype: float32 # for data collection based on robo-dm
   
-  - id: joint_angles_cmd 
+  - id: robot_control_cmd
     latency_test_target: False
-    msg_type: component_interfaces/msg/JointAngles
-    publish_freq: 90
+    msg_type: component_interfaces/msg/ControlCmd
+    publish_freq: 120
     frame_id: xarm5_robot
     publisher: motion_retarget
     subscribers: [robot_driver]
-    shape: (6,1) 
+    dtype: float32
+
+  - id: gripper_control_cmd 
+    latency_test_target: False
+    msg_type: component_interfaces/msg/ControlCmd
+    publish_freq: 120
+    frame_id: xarm5_robot
+    publisher: motion_retarget
+    subscribers: [robot_driver]
     dtype: float32
 
   - id: robot_state
+    latency_test_target: False
+    msg_type: component_interfaces/msg/RobotState
+    publish_freq: 90
+    frame_id: xarm5_robot
+    publisher: robot_driver
+    subscribers: [feedback_data_processor]
+  
+  - id: gripper_state
     latency_test_target: False
     msg_type: component_interfaces/msg/RobotState
     publish_freq: 90
@@ -45,7 +59,6 @@ topics:
     publisher: feedback_sensor_driver
     subscribers: [feedback_data_processor]
     encoding: rgb8
-    shape: (1280,720,3)
     dtype: unit8
 
   - id: scene_image_processed
@@ -56,7 +69,6 @@ topics:
     publisher: feedback_data_processor
     subscribers: [feedback_projector_driver]
     encoding: rgb8
-    shape: (640,480,3)
     dtype: unit8
 
   - id: handkeypoint_plot_2d
@@ -66,7 +78,6 @@ topics:
     frame_id: xarm5_robot
     publisher: feedback_data_processor
     subscribers: [feedback_projector_driver]
-    shape: (16,2)
     dtype: float32
 
   - id: robot_state_processed

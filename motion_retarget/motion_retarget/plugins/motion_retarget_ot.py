@@ -12,7 +12,7 @@ import math
 # Import message types based on the interface definitions
 from component_interfaces.msg import (
     ProcessedHandKeypoint,
-    JointAngles
+    ControlCmd
 )
 from std_msgs.msg import Header
 from geometry_msgs.msg import Point, Transform, TransformStamped
@@ -45,7 +45,7 @@ class MotionRetargetOT(MotionRetargetBase):
             if self.my_config and "plugins" in self.my_config:
                 plugins = self.my_config["plugins"]
                 for plugin in plugins:
-                    if plugin.get('id') == 'motion_retarget_ot' or plugin.get('_target_', '').endswith('MotionRetargetOT'):
+                    if plugin.get('id') == 'motion_retarget_ot':
                         plugin_params = plugin.get('params', {})
                         self.processing_frequency = plugin_params.get("freq", self.processing_frequency)
                         self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
@@ -83,9 +83,9 @@ class MotionRetargetOT(MotionRetargetBase):
                 if topic_config.get("publisher") == self.layer_cn_id:
                     msg_type = topic_config["msg_type"]
                     
-                    if msg_type == "component_interfaces/msg/JointAngles":
+                    if msg_type == "component_interfaces/msg/ControlCmd":
                         self.compo_publishers[topic_id] = self.create_publisher(
-                            JointAngles,
+                            ControlCmd,
                             topic_id,
                             10
                         )
@@ -156,11 +156,11 @@ class MotionRetargetOT(MotionRetargetBase):
 
     def retarget_control_to_robot_space(
         self, control_data: ProcessedHandKeypoint, transforms: Dict[str, Any]
-    ) -> JointAngles:
+    ) -> ControlCmd:
         """
         Simple dummy implementation that returns basic joint angles.
         """
-        joint_angles_msg = JointAngles()
+        joint_angles_msg = ControlCmd()
         joint_angles_msg.header = control_data.header
         joint_angles_msg.header.stamp = self.get_clock().now().to_msg()
         joint_angles_msg.robot_id = "xarm5_robot"
@@ -276,7 +276,7 @@ class MotionRetargetOT(MotionRetargetBase):
         self.get_logger().warn("URGENT STOP triggered for MotionRetargetOT")
         
         # Send stop command to robot (all zeros)
-        stop_msg = JointAngles()
+        stop_msg = ControlCmd()
         stop_msg.header = Header()
         stop_msg.header.stamp = self.get_clock().now().to_msg()
         stop_msg.robot_id = "xarm5_robot"

@@ -1,321 +1,615 @@
 import rclpy
 from rclpy.timer import Timer
+from rclpy.action import ActionClient
 import json
 import yaml
 import numpy as np
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 from sensor_msgs.msg import JointState
-from geometry_msgs.msg import Pose, Point, Quaternion
+from geometry_msgs.msg import Pose, Point, Quaternion, PoseStamped
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time, Duration
-from component_interfaces.msg import JointAngles, RobotState
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from control_msgs.action import FollowJointTrajectory
+from component_interfaces.msg import *
 from core_bases.robot_driver_base import RobotDriverBase
-from omegaconf import OmegaConf, DictConfig
+from tf2_ros import TransformListener, Buffer
 import time
 import math
+from scipy.spatial.transform import Rotation as R
 
 
-class XArm5Driver(RobotDriverBase):
+class SimXArm5Driver(RobotDriverBase):
     """
-    ROS2 Driver node for XArm5 robot.
-    Handles joint angle commands and publishes robot state.
+    ROS2 Driver node for simulated XArm5 robot and gripper.
+    Handles both joint and cartesian control commands.
     """
 
-    def __init__(self, layer_cn_id: str, simulated: bool = True, ros2_domain_id: Optional[int] = None):
-        super().__init__(layer_cn_id, simulated, ros2_domain_id)
+    def __init__(self, layer_cn_id: str, ros2_domain_id: Optional[int] = None):
+        super().__init__(layer_cn_id, simulated=True, ros2_domain_id=ros2_domain_id)
         
-        # Driver specific attributes
-        self.freq = 90  # Default frequency
-        self.robot_active = False
-        self.robot_connected = False
-
-        self.robot_ip = None
+        # Driver specific attributes from config
+        self.freq = 120
+        self.scale_factor = 1.0
+        self.default_controllers = []
         
         # Robot state
-        self.joint_names = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5"]
-        self.current_joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.current_joint_velocities = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.current_joint_efforts = [0.0, 0.0, 0.0, 0.0, 0.0]
-        self.target_joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0]
+        self.joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5"]
+        self.gripper_joint_names = ["drive_joint"]
         
-        # End effector pose (dummy forward kinematics)
-        self.end_effector_pose = Pose()
-        self.end_effector_pose.position = Point(x=0.5, y=0.0, z=0.3)
-        self.end_effector_pose.orientation = Quaternion(x=0.0, y=0.0, z=0.0, w=1.0)
+        # Current states
+        self.current_robot_joint_state = None
+        self.current_gripper_joint_state = None
+        self.current_eef_pose = None
+        self.current_gripper_pose = None
         
-        # Command tracking
-        self.last_command_time = None
-        self.command_timeout = 5.0  # seconds
-
+        # Robot active flags
+        self.robot_active = False
+        self.robot_connected = False
+        
+        # Initial poses
+        self.robot_initial_pose = [0.207, 0.0, 0.112, 1.0, 0.0, 0.0, 0.0]  # [x, y, z, qw, qx, qy, qz]
+        self.gripper_initial_pose = {
+            'right_finger': [0.207, 0.07, 0.01, 1.0, 0.0, 0.0, 0.0],
+            'left_finger': [0.207, -0.07, 0.01, 1.0, 0.0, 0.0, 0.0]
+        }
+        
+        # TF2 for getting poses
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+        
+        # ROS2 Control publishers and action clients
+        self.cartesian_target_pub = None
+        self.robot_traj_action_client = None
+        self.gripper_action_client = None
+        
+        # Joint state subscribers
+        self.joint_state_sub = None
+        
+        # Load configuration
         self._load_my_config()
-
+        
+        # Initialize robot
         self._initialize_robot()
 
-        # # Start state publishing timer
-        # self._start_state_publishing()
-            
     def _load_my_config(self):
         """Load all required configurations using ComponentNode methods"""
         try:
             # Load component-specific configuration
             self.my_config = self.load_my_config()
             if self.my_config and "plugins" in self.my_config:
-                # Extract processing frequency from plugin parameters if available
                 plugins = self.my_config["plugins"]
                 for plugin in plugins:
-                    if plugin.get('id') == 'xarm5_driver' or plugin.get('_target_', '').endswith('XArm5Driver'):
+                    if plugin.get('id') == 'sim_xarm5_driver':
                         plugin_params = plugin.get('params', {})
                         self.freq = plugin_params.get("freq", self.freq)
+                        self.scale_factor = plugin_params.get("scale_factor", self.scale_factor)
+                        self.default_controllers = plugin_params.get("default_controller", [])
                         if 'joint_names' in plugin_params:
                             self.joint_names = plugin_params['joint_names']
-                        if 'joint_limits' in plugin_params:
-                            # Store joint limits for validation
-                            self.joint_limits = plugin_params['joint_limits']
-                        self.get_logger().info(f"Loaded processor config: {self.freq}Hz")
+                        self.get_logger().info(
+                            f"Loaded driver config: freq={self.freq}Hz, "
+                            f"scale_factor={self.scale_factor}, "
+                            f"controllers={self.default_controllers}"
+                        )
                         break
                 
         except Exception as e:
             self.handle_error(f"Failed to load configurations: {str(e)}")
 
     def register_pub_sub(self):
-        """Register publishers and subscribers based on data stream configuration."""
+        """
+        Register publishers and subscribers based on data stream configuration.
+        Publishers: robot_state, gripper_state
+        Subscribers: robot_control_cmd, gripper_control_cmd
+        """
         try:
-            # Use the loaded data_stream_config instead of loading again
             if not self.data_stream_config or 'topics' not in self.data_stream_config:
                 self.handle_error("No data stream configuration available")
                 return
             
             topics = self.data_stream_config.get('topics', [])
             
-            # Register publishers and subscribers
+            # Register based on data_stream.yaml
             for topic in topics:
                 topic_id = topic.get('id')
                 msg_type = topic.get('msg_type')
                 publisher = topic.get('publisher')
                 subscribers = topic.get('subscribers', [])
                 
-                # Create publishers for topics where this node is the publisher
+                # Create publishers for robot_state and gripper_state
                 if publisher == self.layer_cn_id:
-                    if msg_type == 'component_interfaces/msg/RobotState':
-                        self.compo_publishers[topic_id] = self.create_publisher(RobotState, topic_id, 10)
-                        self.logging(f"Created publisher for {topic_id} with type {msg_type}", "INFO")
-                    else:
-                        self.logging(f"Unsupported publisher message type: {msg_type}", "WARN")
+                    if topic_id in ['robot_state', 'gripper_state']:
+                        if msg_type == 'component_interfaces/msg/RobotState':
+                            self.compo_publishers[topic_id] = self.create_publisher(
+                                RobotState, topic_id, 10
+                            )
+                            self.logging(f"Created publisher for {topic_id}", "INFO")
                 
-                # Create subscribers for topics where this node is a subscriber
+                # Create subscribers for robot_control_cmd and gripper_control_cmd
                 if self.layer_cn_id in subscribers:
-                    if msg_type == 'component_interfaces/msg/JointAngles':
-                        self.compo_subscribers[topic_id] = self.create_subscription(
-                            JointAngles,
-                            topic_id,
-                            lambda msg, tid=topic_id: self.cmd_sub_callback(msg, tid),
-                            10
-                        )
-                        self.logging(f"Created subscriber for {topic_id} with type {msg_type}", "INFO")
-                    else:
-                        self.logging(f"Unsupported subscriber message type: {msg_type}", "WARN")
+                    if topic_id in ['robot_control_cmd', 'gripper_control_cmd']:
+                        if msg_type == 'component_interfaces/msg/ControlCmd':
+                            self.compo_subscribers[topic_id] = self.create_subscription(
+                                ControlCmd,
+                                topic_id,
+                                lambda msg, tid=topic_id: self.cmd_sub_callback(msg, tid),
+                                10
+                            )
+                            self.logging(f"Created subscriber for {topic_id}", "INFO")
             
-            self.logging(f"Registered {len(self.compo_publishers)} publishers and {len(self.compo_subscribers)} subscribers", "INFO")
+            # Subscribe to joint_states from Gazebo/ros2_control
+            self.joint_state_sub = self.create_subscription(
+                JointState,
+                '/joint_states',
+                self.joint_state_callback,
+                10
+            )
+            self.logging("Subscribed to /joint_states", "INFO")
+            
+            # Create cartesian motion controller publisher
+            self.cartesian_target_pub = self.create_publisher(
+                PoseStamped,
+                '/xarm5_cartesian_motion_controller/target_frame',
+                10
+            )
+            self.logging("Created cartesian target publisher", "INFO")
+            
+            # Create robot joint trajectory action client
+            self.robot_traj_action_client = ActionClient(
+                self,
+                FollowJointTrajectory,
+                '/xarm5_traj_controller/follow_joint_trajectory'
+            )
+            self.logging("Created robot trajectory action client", "INFO")
+            
+            # Create gripper action client
+            self.gripper_action_client = ActionClient(
+                self,
+                FollowJointTrajectory,
+                '/xarm_gripper_traj_controller/follow_joint_trajectory'
+            )
+            self.logging("Created gripper action client", "INFO")
+            
+            self.logging(
+                f"Registered {len(self.compo_publishers)} publishers and "
+                f"{len(self.compo_subscribers)} subscribers", 
+                "INFO"
+            )
             
         except Exception as e:
             self.handle_error(f"Error in register_pub_sub: {str(e)}")
 
-    def cmd_sub_callback(self, msg: JointAngles, topic_id: str):
-        """Callback for joint angle commands."""
+    def joint_state_callback(self, msg: JointState):
+        """Callback for joint_states topic from Gazebo/ros2_control"""
         try:
-            ##NOTE
-            # if self.state!='running':
-            #     return  
- 
+            # Separate robot and gripper joint states
+            robot_indices = []
+            gripper_indices = []
+            
+            for i, name in enumerate(msg.name):
+                if name in self.joint_names:
+                    robot_indices.append(i)
+                elif name in self.gripper_joint_names:
+                    gripper_indices.append(i)
+            
+            # Update robot joint state
+            if robot_indices:
+                self.current_robot_joint_state = JointState()
+                self.current_robot_joint_state.header = msg.header
+                self.current_robot_joint_state.name = [msg.name[i] for i in robot_indices]
+                self.current_robot_joint_state.position = [msg.position[i] for i in robot_indices]
+                if msg.velocity:
+                    self.current_robot_joint_state.velocity = [msg.velocity[i] for i in robot_indices]
+                if msg.effort:
+                    self.current_robot_joint_state.effort = [msg.effort[i] for i in robot_indices]
+            
+            # Update gripper joint state
+            if gripper_indices:
+                self.current_gripper_joint_state = JointState()
+                self.current_gripper_joint_state.header = msg.header
+                self.current_gripper_joint_state.name = [msg.name[i] for i in gripper_indices]
+                self.current_gripper_joint_state.position = [msg.position[i] for i in gripper_indices]
+                if msg.velocity:
+                    self.current_gripper_joint_state.velocity = [msg.velocity[i] for i in gripper_indices]
+                if msg.effort:
+                    self.current_gripper_joint_state.effort = [msg.effort[i] for i in gripper_indices]
+                    
+        except Exception as e:
+            self.logging(f"Error in joint_state_callback: {str(e)}", "ERROR")
 
-            self.logging(f"Received joint angles command on {topic_id}", "DEBUG")
+    def cmd_sub_callback(self, msg: ControlCmd, topic_id: str):
+        """
+        Callback for control commands (robot_control_cmd and gripper_control_cmd).
+        Handles both joint and cartesian space control.
+        """
+        try:
+            self.logging(f"Received command on {topic_id}", "DEBUG")
             
             # Validate robot ID
-            if hasattr(msg, 'robot_id') and msg.robot_id != "xarm5_robot":
-                self.logging(f"Command for different robot: {msg.robot_id}, ignoring", "WARN")
+            if msg.robot_id not in ["xarm5_robot", "xarm_gripper"]:
+                self.logging(f"Command for unknown robot: {msg.robot_id}, ignoring", "WARN")
                 return
             
-            # Validate joint count
-            if len(msg.joint_angles) != len(self.joint_names):
-                self.handle_error(f"Invalid joint count: expected {len(self.joint_names)}, got {len(msg.joint_angles)}")
-                return
+            # Determine if this is for robot or gripper
+            is_gripper = (topic_id == 'gripper_control_cmd' or msg.robot_id == "xarm_gripper")
             
-            # Update target positions
-            self.target_joint_positions = list(msg.joint_angles)
-            self.last_command_time = time.time()
-            
-            # Execute command
-            self.execute_command("xarm5_robot", {
-                "type": "joint_angles",
-                "positions": self.target_joint_positions,
-                "joint_names": msg.joint_names if hasattr(msg, 'joint_names') else self.joint_names
-            })
-            
-            self.logging(f"Updated target joint positions: {self.target_joint_positions}", "DEBUG")
-            
+            # Execute command based on space
+            if msg.space.lower() == 'cartesian':
+                if is_gripper:
+                    self.logging("Gripper does not support cartesian control", "WARN")
+                    return
+                self.move_cartesian(msg)
+            elif msg.space.lower() == 'joint':
+                if is_gripper:
+                    self.move_joint(msg, group='gripper')
+                else:
+                    self.move_joint(msg, group='robot')
+            else:
+                self.logging(f"Unknown control space: {msg.space}", "WARN")
+                
         except Exception as e:
             self.handle_error(f"Error in cmd_sub_callback: {str(e)}")
 
-    def get_state(self, robot_id: str) -> Any:
-        """Get current robot state."""
-        if not self.robot_active:
-            return None
-            
+    def move_cartesian(self, cmd: ControlCmd):
+        """
+        Execute cartesian space control command for robot arm.
+        Only valid for xarm5 robot, not gripper.
+        """
         try:
-            # Simulate robot motion towards target positions
-            self._update_robot_simulation()
+            if not self.robot_active:
+                self.logging("Robot not active, ignoring command", "WARN")
+                return
             
-            # Create robot state data
-            robot_state = {
-                'robot_id': robot_id,
-                'joint_names': self.joint_names.copy(),
-                'joint_positions': self.current_joint_positions.copy(),
-                'joint_velocities': self.current_joint_velocities.copy(),
-                'joint_efforts': self.current_joint_efforts.copy(),
-                'end_effector_pose': self.end_effector_pose,
-                'timestamp': self.get_clock().now().to_msg()
-            }
+            # Get current pose
+            current_pose = self.get_eef_pose_from_tf('link_base', 'link5')
+            if current_pose is None:
+                self.logging("Cannot get current EEF pose", "ERROR")
+                return
             
-            return robot_state
+            # Calculate target pose
+            if cmd.relative:
+                # Apply scale factor to relative motion
+                target_pose = self._apply_relative_cartesian(
+                    current_pose, 
+                    cmd.pose, 
+                    self.scale_factor
+                )
+            else:
+                target_pose = cmd.pose
+            
+            # Ensure orientation is in quaternion
+            target_pose = self._ensure_quaternion(target_pose)
+            
+            # Publish to cartesian motion controller
+            pose_stamped = PoseStamped()
+            pose_stamped.header.stamp = self.get_clock().now().to_msg()
+            pose_stamped.header.frame_id = 'link_base'
+            pose_stamped.pose = target_pose
+            
+            self.cartesian_target_pub.publish(pose_stamped)
+            self.logging(
+                f"Published cartesian target: pos=[{target_pose.position.x:.3f}, "
+                f"{target_pose.position.y:.3f}, {target_pose.position.z:.3f}]",
+                "DEBUG"
+            )
             
         except Exception as e:
-            self.handle_error(f"Error getting state for robot {robot_id}: {str(e)}")
+            self.handle_error(f"Error in move_cartesian: {str(e)}")
+
+    def move_joint(self, cmd: ControlCmd, group: str = 'robot'):
+        """
+        Execute joint space control command.
+        Valid for both robot arm and gripper.
+        
+        Args:
+            cmd: ControlCmd message
+            group: 'robot' or 'gripper'
+        """
+        try:
+            if not self.robot_active:
+                self.logging("Robot not active, ignoring command", "WARN")
+                return
+            
+            if group == 'robot':
+                # Validate joint count
+                if len(cmd.joint_angles) != len(self.joint_names):
+                    self.handle_error(
+                        f"Invalid joint count for robot: expected {len(self.joint_names)}, "
+                        f"got {len(cmd.joint_angles)}"
+                    )
+                    return
+                
+                # Get current joint state
+                if self.current_robot_joint_state is None:
+                    self.logging("No current robot joint state available", "WARN")
+                    return
+                
+                current_positions = list(self.current_robot_joint_state.position)
+                
+                # Calculate target positions
+                if cmd.relative:
+                    # Apply scale factor to relative motion
+                    target_positions = [
+                        current + (target - current) * self.scale_factor
+                        for current, target in zip(current_positions, cmd.joint_angles)
+                    ]
+                else:
+                    target_positions = list(cmd.joint_angles)
+                
+                # Send robot joint trajectory action
+                self._send_robot_trajectory(current_positions, target_positions)
+                self.logging(f"Sent robot joint command", "DEBUG")
+                
+            elif group == 'gripper':
+                # Validate gripper joint count
+                if len(cmd.joint_angles) != len(self.gripper_joint_names):
+                    self.handle_error(
+                        f"Invalid joint count for gripper: expected {len(self.gripper_joint_names)}, "
+                        f"got {len(cmd.joint_angles)}"
+                    )
+                    return
+                
+                # Get current gripper state
+                if self.current_gripper_joint_state is None:
+                    self.logging("No current gripper joint state available", "WARN")
+                    current_position = 0.0
+                else:
+                    current_position = self.current_gripper_joint_state.position[0]
+                
+                # Calculate target position
+                if cmd.relative:
+                    target_position = current_position + cmd.joint_angles[0] * self.scale_factor
+                else:
+                    target_position = cmd.joint_angles[0]
+                
+                # Clamp to valid range [0.0, 1.0]
+                target_position = np.clip(target_position, 0.0, 1.0)
+                
+                # Send gripper trajectory action
+                self._send_gripper_trajectory(current_position, target_position)
+                self.logging(f"Sent gripper command: {target_position:.3f}", "DEBUG")
+                
+        except Exception as e:
+            self.handle_error(f"Error in move_joint: {str(e)}")
+
+    def _send_robot_trajectory(self, current_positions: List[float], target_positions: List[float]):
+        """Send robot joint trajectory action goal"""
+        try:
+            if not self.robot_traj_action_client.wait_for_server(timeout_sec=1.0):
+                self.logging("Robot trajectory action server not available", "WARN")
+                return
+            
+            # Create trajectory goal
+            goal = FollowJointTrajectory.Goal()
+            goal.trajectory.joint_names = self.joint_names
+            
+            # Start point (current position)
+            point1 = JointTrajectoryPoint()
+            point1.positions = current_positions
+            point1.velocities = [0.0] * len(self.joint_names)
+            point1.time_from_start = Duration(sec=0, nanosec=0)
+            
+            # End point (target position)
+            point2 = JointTrajectoryPoint()
+            point2.positions = target_positions
+            point2.velocities = [0.0] * len(self.joint_names)
+            
+            # Calculate time based on maximum joint displacement
+            max_displacement = max(abs(t - c) for t, c in zip(target_positions, current_positions))
+            # Assume max joint velocity of 1.0 rad/s
+            time_sec = max(max_displacement / 1.0, 0.1)  # At least 0.1 second
+            point2.time_from_start = Duration(sec=int(time_sec), nanosec=int((time_sec % 1) * 1e9))
+            
+            goal.trajectory.points = [point1, point2]
+            
+            # Send goal asynchronously
+            self.robot_traj_action_client.send_goal_async(goal)
+            self.logging(f"Sent robot trajectory to joints: {target_positions}", "DEBUG")
+            
+        except Exception as e:
+            self.logging(f"Error sending robot trajectory: {str(e)}", "ERROR")
+
+    def _send_gripper_trajectory(self, current_pos: float, target_pos: float):
+        """Send gripper trajectory action goal"""
+        try:
+            if not self.gripper_action_client.wait_for_server(timeout_sec=1.0):
+                self.logging("Gripper action server not available", "WARN")
+                return
+            
+            # Create trajectory
+            goal = FollowJointTrajectory.Goal()
+            goal.trajectory.joint_names = self.gripper_joint_names
+            
+            # Start point (current position)
+            point1 = JointTrajectoryPoint()
+            point1.positions = [current_pos]
+            point1.time_from_start = Duration(sec=0, nanosec=0)
+            
+            # End point (target position)
+            point2 = JointTrajectoryPoint()
+            point2.positions = [target_pos]
+            # Calculate time based on distance (1 rad/s as specified)
+            distance = abs(target_pos - current_pos)
+            time_sec = max(distance / 1.0, 0.1)  # At least 0.1 second
+            point2.time_from_start = Duration(sec=int(time_sec), nanosec=int((time_sec % 1) * 1e9))
+            
+            goal.trajectory.points = [point1, point2]
+            
+            # Send goal asynchronously
+            self.gripper_action_client.send_goal_async(goal)
+            
+        except Exception as e:
+            self.logging(f"Error sending gripper trajectory: {str(e)}", "ERROR")
+
+    def get_state(self, robot_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get current robot or gripper state.
+        
+        Args:
+            robot_id: 'xarm5_robot' or 'xarm_gripper'
+            
+        Returns:
+            Dictionary containing robot state data
+        """
+        if not self.robot_active:
+            return None
+        
+        try:
+            if robot_id == "xarm5_robot":
+                if self.current_robot_joint_state is None:
+                    return None
+                
+                # Get EEF pose from TF
+                eef_pose = self.get_eef_pose_from_tf('link_base', 'link5')
+                if eef_pose is None:
+                    eef_pose = Pose()  # Use default if TF not available
+                
+                robot_state = {
+                    'robot_id': robot_id,
+                    'joint_state': self.current_robot_joint_state,
+                    'end_effector_pose': eef_pose,
+                    'timestamp': self.get_clock().now().to_msg()
+                }
+                return robot_state
+                
+            elif robot_id == "xarm_gripper":
+                if self.current_gripper_joint_state is None:
+                    return None
+                
+                # Calculate gripper center pose (average of two fingers)
+                gripper_pose = self.get_gripper_center_pose()
+                if gripper_pose is None:
+                    gripper_pose = Pose()
+                
+                gripper_state = {
+                    'robot_id': robot_id,
+                    'joint_state': self.current_gripper_joint_state,
+                    'end_effector_pose': gripper_pose,
+                    'timestamp': self.get_clock().now().to_msg()
+                }
+                return gripper_state
+            
+            return None
+            
+        except Exception as e:
+            self.handle_error(f"Error getting state for {robot_id}: {str(e)}")
             return None
 
-    def _update_robot_simulation(self):
-        """Update simulated robot state - move towards target positions."""
-        if not self.simulated:
-            return
+    def get_eef_pose_from_tf(self, base_frame: str, eef_frame: str) -> Optional[Pose]:
+        """Get end effector pose from TF tree"""
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                base_frame,
+                eef_frame,
+                rclpy.time.Time(),
+                timeout=rclpy.duration.Duration(seconds=0.1)
+            )
             
-        dt = 1.0 / self.freq  # Time step
-        max_velocity = 1.0  # rad/s
-        position_tolerance = 0.001  # rad
-        
-        # Move each joint towards target position
-        for i in range(len(self.joint_names)):
-            target = self.target_joint_positions[i]
-            current = self.current_joint_positions[i]
+            pose = Pose()
+            pose.position.x = transform.transform.translation.x
+            pose.position.y = transform.transform.translation.y
+            pose.position.z = transform.transform.translation.z
+            pose.orientation = transform.transform.rotation
             
-            # Calculate position error
-            error = target - current
+            return pose
             
-            if abs(error) > position_tolerance:
-                # Calculate desired velocity (proportional control)
-                desired_velocity = np.clip(error * 5.0, -max_velocity, max_velocity)
-                
-                # Update position
-                self.current_joint_positions[i] += desired_velocity * dt
-                self.current_joint_velocities[i] = desired_velocity
-                
-                # Simulate some effort (torque)
-                self.current_joint_efforts[i] = error * 10.0  # Simple proportional torque
-            else:
-                self.current_joint_velocities[i] = 0.0
-                self.current_joint_efforts[i] = 0.0
-        
-        # Update end effector pose using simple forward kinematics
-        self._update_end_effector_pose()
+        except Exception as e:
+            self.logging(f"Could not get transform {base_frame} -> {eef_frame}: {str(e)}", "DEBUG")
+            return None
 
-    def _update_end_effector_pose(self):
-        """Update end effector pose using simplified forward kinematics."""
-        # Simplified 5-DOF arm forward kinematics
-        # In reality, this would use proper DH parameters
-        
-        # Link lengths (approximate for XArm5)
-        l1, l2, l3, l4, l5 = 0.267, 0.289, 0.077, 0.342, 0.097
-        
-        # Joint angles
-        q1, q2, q3, q4, q5 = self.current_joint_positions
-        
-        # Simplified forward kinematics (not exact but reasonable for demo)
-        x = (l2 * np.cos(q2) + l3 * np.cos(q2 + q3) + l4 * np.cos(q2 + q3 + q4)) * np.cos(q1)
-        y = (l2 * np.cos(q2) + l3 * np.cos(q2 + q3) + l4 * np.cos(q2 + q3 + q4)) * np.sin(q1)
-        z = l1 + l2 * np.sin(q2) + l3 * np.sin(q2 + q3) + l4 * np.sin(q2 + q3 + q4)
-        
-        self.end_effector_pose.position.x = float(x)
-        self.end_effector_pose.position.y = float(y)
-        self.end_effector_pose.position.z = float(z)
-        
-        # Simplified orientation (roll-pitch-yaw to quaternion)
-        roll = q4
-        pitch = q2 + q3
-        yaw = q1
-        
-        cy = np.cos(yaw * 0.5)
-        sy = np.sin(yaw * 0.5)
-        cp = np.cos(pitch * 0.5)
-        sp = np.sin(pitch * 0.5)
-        cr = np.cos(roll * 0.5)
-        sr = np.sin(roll * 0.5)
-        
-        self.end_effector_pose.orientation.w = float(cr * cp * cy + sr * sp * sy)
-        self.end_effector_pose.orientation.x = float(sr * cp * cy - cr * sp * sy)
-        self.end_effector_pose.orientation.y = float(cr * sp * cy + sr * cp * sy)
-        self.end_effector_pose.orientation.z = float(cr * cp * sy - sr * sp * cy)
+    def get_gripper_center_pose(self) -> Optional[Pose]:
+        """Calculate gripper center pose as average of right and left fingers"""
+        try:
+            right_pose = self.get_eef_pose_from_tf('xarm_gripper_base_link', 'right_finger')
+            left_pose = self.get_eef_pose_from_tf('xarm_gripper_base_link', 'left_finger')
+            
+            if right_pose and left_pose:
+                center_pose = Pose()
+                center_pose.position.x = (right_pose.position.x + left_pose.position.x) / 2.0
+                center_pose.position.y = (right_pose.position.y + left_pose.position.y) / 2.0
+                center_pose.position.z = (right_pose.position.z + left_pose.position.z) / 2.0
+                # Use right finger orientation as representative
+                center_pose.orientation = right_pose.orientation
+                return center_pose
+            
+            return None
+            
+        except Exception as e:
+            self.logging(f"Error calculating gripper center pose: {str(e)}", "DEBUG")
+            return None
 
     def _create_robot_state_msg(self, robot_state: Dict[str, Any]) -> RobotState:
-        """Create RobotState message from robot state data."""
+        """Create RobotState message from robot state data"""
         msg = RobotState()
         
         # Set header
         msg.header = Header()
         msg.header.stamp = robot_state['timestamp']
-        msg.header.frame_id = "xarm5_robot"  # From data_stream.yaml frame_id
+        msg.header.frame_id = "xarm5_robot"
         
         # Set robot ID
         msg.robot_id = robot_state['robot_id']
         
         # Set joint state
-        msg.joint_states = JointState()
-        msg.joint_states.header = msg.header
-        msg.joint_states.name = robot_state['joint_names']
-        msg.joint_states.position = robot_state['joint_positions']
-        msg.joint_states.velocity = robot_state['joint_velocities']
-        msg.joint_states.effort = robot_state['joint_efforts']
+        msg.joint_states = robot_state['joint_state']
         
-        # Set end effector pose
+        # Set end effector pose (with both quaternion and euler)
         msg.end_effector_pose = robot_state['end_effector_pose']
         
         return msg
 
-    def publish_robot_state(self):
-        """Publish current robot state - called by timer."""
+    def publish_state(self):
+        """Publish current robot and gripper state - called by timer"""
         if not self.robot_active:
             return
-            
+        
         try:
-            ##NOTE
-            # if self.state!='running':
-            #     return  
-
-                
-            # Get current robot state
+            # Publish robot state
             robot_state = self.get_state("xarm5_robot")
+            if robot_state and 'robot_state' in self.compo_publishers:
+                msg = self._create_robot_state_msg(robot_state)
+                self.publish_msg('robot_state', msg)
+                self.logging("Published robot state", "DEBUG")
             
-            if robot_state is not None:
-                # Create and publish RobotState message
-                if 'robot_state' in self.compo_publishers:
-                    msg = self._create_robot_state_msg(robot_state)
-                    self.publish_msg('robot_state', msg)
-                    self.logging("Published robot state", "DEBUG")
-                else:
-                    self.logging("No publisher found for robot_state", "WARN")
-            else:
-                self.logging("No robot state available", "DEBUG")
+            # Publish gripper state
+            gripper_state = self.get_state("xarm_gripper")
+            if gripper_state and 'gripper_state' in self.compo_publishers:
+                msg = self._create_robot_state_msg(gripper_state)
+                self.publish_msg('gripper_state', msg)
+                self.logging("Published gripper state", "DEBUG")
                 
         except Exception as e:
-            self.handle_error(f"Error publishing robot state: {str(e)}")
+            self.handle_error(f"Error publishing states: {str(e)}")
 
     def home(self):
-        """Move robot to home position."""
+        """Move robot to initial pose"""
         try:
             self.logging("Moving robot to home position", "INFO")
             
-            # Home position (all joints at 0)
-            home_positions = [0.0, 0.0, 0.0, 0.0, 0.0]
+            # Create home pose
+            home_pose = Pose()
+            home_pose.position.x = self.robot_initial_pose[0]
+            home_pose.position.y = self.robot_initial_pose[1]
+            home_pose.position.z = self.robot_initial_pose[2]
+            home_pose.orientation.w = self.robot_initial_pose[3]
+            home_pose.orientation.x = self.robot_initial_pose[4]
+            home_pose.orientation.y = self.robot_initial_pose[5]
+            home_pose.orientation.z = self.robot_initial_pose[6]
             
-            self.target_joint_positions = home_positions
-            self.last_command_time = time.time()
+            # Publish home pose
+            pose_stamped = PoseStamped()
+            pose_stamped.header.stamp = self.get_clock().now().to_msg()
+            pose_stamped.header.frame_id = 'link_base'
+            pose_stamped.pose = home_pose
+            
+            self.cartesian_target_pub.publish(pose_stamped)
+            
+            # Home gripper (fully open)
+            self._send_gripper_trajectory(
+                self.current_gripper_joint_state.position[0] if self.current_gripper_joint_state else 0.5,
+                0.0
+            )
             
             self.logging("Robot homing initiated", "INFO")
             
@@ -323,79 +617,138 @@ class XArm5Driver(RobotDriverBase):
             self.handle_error(f"Error in home: {str(e)}")
 
     def execute_command(self, robot_id: str, command: Any) -> None:
-        """Execute robot command."""
+        """
+        Execute robot command.
+        This is a wrapper for compatibility with base class.
+        Actual execution is done through move_cartesian and move_joint.
+        """
         try:
             if not self.robot_active:
                 self.logging("Robot not active, ignoring command", "WARN")
                 return
-                
-            command_type = command.get('type', 'unknown')
             
-            if command_type == 'joint_angles':
-                positions = command.get('positions', [])
-                if len(positions) == len(self.joint_names):
-                    self.get_logger().info(f"Executing joint angles command: {positions}")
-                    # Target positions already set in callback
-                else:
-                    self.handle_error(f"Invalid joint angles command: wrong number of joints")
-                    
-            elif command_type == 'stop':
-                self.logging("Executing stop command", "WARN")
-                # Stop motion by setting target to current position
-                self.target_joint_positions = self.current_joint_positions.copy()
-                
-            elif command_type == 'home':
-                self.home()
-                
-            else:
-                self.logging(f"Unknown command type: {command_type}", "WARN")
-                
+            self.logging(f"Execute command called for {robot_id}: {command}", "DEBUG")
+            
         except Exception as e:
-            self.handle_error(f"Error executing command for robot {robot_id}: {str(e)}")
+            self.handle_error(f"Error executing command: {str(e)}")
 
-    
     def register_timer(self):
-        
-        if self.compo_timers != []:
+        """Register timer for state publishing"""
+        if self.compo_timers:
             for t in self.compo_timers:
                 t.cancel()
-
+            self.compo_timers.clear()
+        
         # Calculate timer period from frequency
         timer_period = 1.0 / self.freq
-        timer = self.create_timer(timer_period, self.publish_robot_state)
-        self.logging(f"Registered a timer for state publishing at {self.freq}Hz", "INFO")
+        timer = self.create_timer(timer_period, self.publish_state)
         self.compo_timers.append(timer)
-
+        self.logging(f"Registered timer for state publishing at {self.freq}Hz", "INFO")
 
     def _initialize_robot(self):
-        """Initialize robot connection and state."""
+        """Initialize robot connection and state"""
         try:
-            self.logging("Initializing XArm5 robot", "INFO")
+            self.logging("Initializing XArm5 robot driver", "INFO")
             
             if self.simulated:
                 self.logging("Running in simulated mode", "INFO")
                 self.robot_connected = True
             
-            # Set initial state
+            # Set robot active
             self.robot_active = True
-            self.current_joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0]
-            self.target_joint_positions = [0.0, 0.0, 0.0, 0.0, 0.0]
             
-            self.logging("XArm5 robot initialized successfully", "INFO")
+            self.logging("XArm5 robot driver initialized successfully", "INFO")
             
         except Exception as e:
             self.handle_error(f"Error initializing robot: {str(e)}")
 
     def urgent_stop(self):
-        """Emergency stop - stop robot motion immediately."""
+        """Emergency stop - stop robot motion immediately"""
         self.logging("Emergency stop triggered", "WARN")
         
-        # Stop robot motion
-        if self.robot_active:
-            self.execute_command("xarm5_robot", {"type": "stop", "urgent": True})
-            self.robot_active = False
-
+        # Stop robot motion by publishing current pose
+        if self.robot_active and self.current_robot_joint_state:
+            try:
+                current_pose = self.get_eef_pose_from_tf('link_base', 'link5')
+                if current_pose:
+                    pose_stamped = PoseStamped()
+                    pose_stamped.header.stamp = self.get_clock().now().to_msg()
+                    pose_stamped.header.frame_id = 'link_base'
+                    pose_stamped.pose = current_pose
+                    self.cartesian_target_pub.publish(pose_stamped)
+                
+                # Stop gripper
+                if self.current_gripper_joint_state:
+                    current_gripper_pos = self.current_gripper_joint_state.position[0]
+                    self._send_gripper_trajectory(current_gripper_pos, current_gripper_pos)
+                    
+            except Exception as e:
+                self.logging(f"Error during urgent stop: {str(e)}", "ERROR")
+        
+        self.robot_active = False
         self.stop_component()
-        self.set_state("disconnected")
-            
+        
         self.logging("Emergency stop completed", "WARN")
+
+    # ============ Utility Methods ============
+    
+    def _apply_relative_cartesian(self, current: Pose, delta: Pose, scale: float) -> Pose:
+        """Apply relative cartesian motion with scale factor"""
+        target = Pose()
+        
+        # Apply position delta
+        target.position.x = current.position.x + delta.position.x * scale
+        target.position.y = current.position.y + delta.position.y * scale
+        target.position.z = current.position.z + delta.position.z * scale
+        
+        # Apply orientation delta (quaternion multiplication)
+        # Scale the rotation delta
+        current_rot = R.from_quat([
+            current.orientation.x,
+            current.orientation.y,
+            current.orientation.z,
+            current.orientation.w
+        ])
+        delta_rot = R.from_quat([
+            delta.orientation.x,
+            delta.orientation.y,
+            delta.orientation.z,
+            delta.orientation.w
+        ])
+        
+        # Scale rotation by converting to rotvec, scaling, and back
+        delta_rotvec = delta_rot.as_rotvec()
+        scaled_delta_rot = R.from_rotvec(delta_rotvec * scale)
+        
+        # Combine rotations
+        target_rot = current_rot * scaled_delta_rot
+        target_quat = target_rot.as_quat()
+        
+        target.orientation.x = target_quat[0]
+        target.orientation.y = target_quat[1]
+        target.orientation.z = target_quat[2]
+        target.orientation.w = target_quat[3]
+        
+        return target
+
+    def _ensure_quaternion(self, pose: Pose) -> Pose:
+        """Ensure orientation is in quaternion format"""
+        # If orientation looks like euler (values > 2*pi), convert
+        # This is a simplification - in practice you'd have a flag
+        quat_sum = (pose.orientation.x**2 + pose.orientation.y**2 + 
+                    pose.orientation.z**2 + pose.orientation.w**2)
+        
+        if abs(quat_sum - 1.0) > 0.1:  # Not normalized quaternion
+            # Assume it's euler angles in x, y, z (roll, pitch, yaw)
+            rot = R.from_euler('xyz', [
+                pose.orientation.x,
+                pose.orientation.y,
+                pose.orientation.z
+            ])
+            quat = rot.as_quat()
+            pose.orientation.x = quat[0]
+            pose.orientation.y = quat[1]
+            pose.orientation.z = quat[2]
+            pose.orientation.w = quat[3]
+        
+        return pose

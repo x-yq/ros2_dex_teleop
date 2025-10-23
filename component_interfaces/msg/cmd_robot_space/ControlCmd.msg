@@ -1,8 +1,10 @@
 std_msgs/Header header
 string send_id
 string robot_id
+bool relative
+string space
 string[] joint_names
-float64[] joint_angles
-float64[] joint_velocities
-float64[] joint_efforts
+float32[] joint_angles
+float32[] joint_velocities
+geometry_msgs/Pose pose
 builtin_interfaces/Duration timeout

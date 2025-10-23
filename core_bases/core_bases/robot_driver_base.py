@@ -65,22 +65,6 @@ class RobotDriverBase(ComponentNode, ABC):
         """Move robot to home position."""
         pass
 
-    @abstractmethod
-    def execute_command(self, robot_id: str, command: Any) -> None:
-        """
-        Execute robot command. Implementation depends on robot type.
-        
-        For physical robots: Call robot SDK
-        For simulated robots: 
-            - Call Gazebo services, or
-            - Import simulator Python API to create scene and render robot
-            
-        Args:
-            robot_id: Identifier of the robot
-            command: Command to execute
-        """
-        pass
-
     def register_pub_sub(self):
         """Register publishers and subscribers based on configuration."""
         # This will be implemented by subclasses based on their specific needs

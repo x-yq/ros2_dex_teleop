@@ -165,7 +165,6 @@ class DataCollector(ComponentNode):
                 'msg_type': topic_config['msg_type'],
                 'publish_freq': topic_config.get('publish_freq', 30.0),
                 'frame_id': topic_config.get('frame_id', ''),
-                'shape': topic_config.get('shape', []),
                 'dtype': topic_config.get('dtype', 'float32'),
                 'encoding': topic_config.get('encoding', '')
             }

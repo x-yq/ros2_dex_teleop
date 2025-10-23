@@ -216,57 +216,14 @@ controller_manager:
     joint_state_broadcaster:
       type: joint_state_broadcaster/JointStateBroadcaster
 
-    pose_broadcaster:
-      type: crisp_controllers/PoseBroadcaster
-
-    cartesian_impedance_controller:
-      type: crisp_controllers/CartesianController
+    xarm5_traj_controller:
+      type: joint_trajectory_controller/JointTrajectoryController
     
-    cartesian_motion_controller:
+    xarm5_cartesian_motion_controller:
       type: cartesian_motion_controller/CartesianMotionController
 
-# Pose broadcaster - simplest crisp controller
-pose_broadcaster:
-  ros__parameters:
-    joints:
-      - joint1
-      - joint2
-      - joint3
-      - joint4
-      - joint5
-    base_frame: "link_base"
-    end_effector_frame: "link5"
-    # Note: some versions use 'base_frame' and 'end_effector_frame'
-    # Try the alternate naming if this doesn't work
 
-# Cartesian impedance controller
-cartesian_impedance_controller:
-  ros__parameters:
-    joints:
-      - joint1
-      - joint2
-      - joint3
-      - joint4
-      - joint5
-    base_frame: "link_base"
-    end_effector_frame: "link5"
-    
-    # Minimal task stiffness
-    task:
-      stiffness:
-        trans_x: 100.0
-        trans_y: 100.0
-        trans_z: 100.0
-        rot_x: 10.0
-        rot_y: 10.0
-        rot_z: 10.0
-    
-    # Minimal nullspace config
-    nullspace:
-      stiffness: 1.0
-
-
-cartesian_motion_controller:
+xarm5_cartesian_motion_controller:
   ros__parameters:
     end_effector_link: "link5"
     robot_base_link: "link_base"
@@ -283,13 +240,13 @@ cartesian_motion_controller:
         #- velocity
 
     solver:
-        error_scale: 1.0
+        error_scale: 0.5
         iterations: 10
 
     pd_gains:
-        trans_x: {p: 1.0}
-        trans_y: {p: 1.0}
-        trans_z: {p: 1.0}
-        rot_x: {p: 0.5}
-        rot_y: {p: 0.5}
-        rot_z: {p: 0.5}
+        trans_x: {p: 0.5, d: 0.5}
+        trans_y: {p: 0.5, d: 0.5}
+        trans_z: {p: 0.5, d: 0.5}
+        rot_x: {p: 0.5, d: 0.5}
+        rot_y: {p: 0.5, d: 0.5}
+        rot_z: {p: 0.5, d: 0.5}
