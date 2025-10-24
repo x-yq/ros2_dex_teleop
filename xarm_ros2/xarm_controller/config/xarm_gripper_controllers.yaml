@@ -4,6 +4,9 @@ controller_manager:
     xarm_gripper_traj_controller:
       type: joint_trajectory_controller/JointTrajectoryController
 
+    # xarm_gripper_cartesian_motion_controller:
+    #   type: cartesian_motion_controller/CartesianMotionController
+
 # only for fake control
 xarm_gripper_traj_controller:
   ros__parameters:
@@ -17,30 +20,32 @@ xarm_gripper_traj_controller:
     interface_name: position
 
 
-# xarm5_crisp_cartesian_impednace_controller:
+
+# xarm_gripper_cartesian_motion_controller:
 #   ros__parameters:
+#     end_effector_link: "right_finger"
+#     robot_base_link: "link5"
 #     joints:
 #       - drive_joint
+#       - left_finger_joint
+#       - left_inner_knuckle_joint
+#       - right_inner_knuckle_joint
+#       - right_outer_knuckle_joint
+#       - right_finger_joint
 
-#     end_effector_frame: right_finger
-#     base_frame: xarm_gripper_base_link
+#     # Choose: position or velocity.
+#     command_interfaces:
+#       - position
+#         #- velocity
 
-#     task:
-#       k_pos_x: -0.2
-#       k_pos_y: -0.5
-#       k_pos_z: 1.0
-#       k_rot_x: 0.0
-#       k_rot_y: 0.0
-#       k_rot_z: 0.0
+#     solver:
+#         error_scale: 0.5
+#         iterations: 10
 
-#     filter:
-#       q: 0.5
-#       dq: 0.5
-#       output_torque: 0.5
-
-#     nullspace:
-#       stiffness: 2.0
-
-#     use_friction: false
-#     use_coriolis_compensation: true
-#     use_local_jacobian: true
+#     pd_gains:
+#         trans_x: {p: 0.5}
+#         trans_y: {p: 0.5}
+#         trans_z: {p: 0.5}
+#         rot_x: {p: 0.5}
+#         rot_y: {p: 0.5}
+#         rot_z: {p: 0.5}

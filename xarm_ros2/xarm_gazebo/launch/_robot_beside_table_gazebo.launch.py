@@ -194,8 +194,8 @@ def launch_setup(context, *args, **kwargs):
     # Load controllers
     controllers = [
         'joint_state_broadcaster',
-        'cartesian_motion_controller',
-        # '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
+        '{}{}_cartesian_motion_controller'.format(prefix.perform(context), xarm_type),
+        '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
         # 'cartesian_impedance_controller',
         # 'pose_broadcaster',
         # 'gravity_compensation',
@@ -215,7 +215,7 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
                 arguments=[
                     controller,
-                    '--controller-manager', '{}/controller_manager'.format(ros_namespace)
+                    '--controller-manager', '{}/controller_manager'.format(ros_namespace), '--inactive'
                 ],
                 parameters=[{'use_sim_time': True}],
             ))
