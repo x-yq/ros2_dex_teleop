@@ -40,7 +40,7 @@ class SimXArm5Driver(RobotDriverBase):
         # Current states
         self.current_robot_joint_state = None
         self.current_gripper_joint_state = None
-        self.current_eef_pose = None
+        # self.current_eef_pose = None
         self.current_gripper_pose = None
         
         # Robot active flags
@@ -48,7 +48,7 @@ class SimXArm5Driver(RobotDriverBase):
         self.robot_connected = False
         
         # Initial poses
-        self.robot_initial_pose = [0.207, 0.0, 0.112, 1.0, 0.0, 0.0, 0.0]  # [x, y, z, qw, qx, qy, qz]
+        self.robot_initial_pose = [0.207, 0.0, 0.112, 1.0, 0.0, 0.0, 0.0]  # [x, y, z, qx, qy, qz, qw]
         self.gripper_initial_pose = {
             'right_finger': [0.207, 0.07, 0.01, 1.0, 0.0, 0.0, 0.0],
             'left_finger': [0.207, -0.07, 0.01, 1.0, 0.0, 0.0, 0.0]
@@ -58,10 +58,10 @@ class SimXArm5Driver(RobotDriverBase):
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
         
-        # ROS2 Control publishers and action clients
-        self.cartesian_target_pub = None
-        self.robot_traj_action_client = None
-        self.gripper_action_client = None
+        # # ROS2 Control publishers and action clients
+        # self.cartesian_target_pub = None
+        # self.robot_traj_action_client = None
+        # self.gripper_action_client = None
         
         # Joint state subscribers
         self.joint_state_sub = None
@@ -227,7 +227,7 @@ class SimXArm5Driver(RobotDriverBase):
             self.logging(f"Received command on {topic_id}", "DEBUG")
             
             # Validate robot ID
-            if msg.robot_id not in ["xarm5_robot", "xarm_gripper"]:
+            if msg.robot_id not in ["xarm5", "xarm_gripper"]:
                 self.logging(f"Command for unknown robot: {msg.robot_id}, ignoring", "WARN")
                 return
             
@@ -447,7 +447,7 @@ class SimXArm5Driver(RobotDriverBase):
         Get current robot or gripper state.
         
         Args:
-            robot_id: 'xarm5_robot' or 'xarm_gripper'
+            robot_id: 'xarm5' or 'xarm_gripper'
             
         Returns:
             Dictionary containing robot state data
@@ -456,7 +456,7 @@ class SimXArm5Driver(RobotDriverBase):
             return None
         
         try:
-            if robot_id == "xarm5_robot":
+            if robot_id == "xarm5":
                 if self.current_robot_joint_state is None:
                     return None
                 
@@ -546,7 +546,7 @@ class SimXArm5Driver(RobotDriverBase):
         # Set header
         msg.header = Header()
         msg.header.stamp = robot_state['timestamp']
-        msg.header.frame_id = "xarm5_robot"
+        msg.header.frame_id = "xarm5"
         
         # Set robot ID
         msg.robot_id = robot_state['robot_id']
@@ -566,7 +566,7 @@ class SimXArm5Driver(RobotDriverBase):
         
         try:
             # Publish robot state
-            robot_state = self.get_state("xarm5_robot")
+            robot_state = self.get_state("xarm5")
             if robot_state and 'robot_state' in self.compo_publishers:
                 msg = self._create_robot_state_msg(robot_state)
                 self.publish_msg('robot_state', msg)
@@ -592,10 +592,10 @@ class SimXArm5Driver(RobotDriverBase):
             home_pose.position.x = self.robot_initial_pose[0]
             home_pose.position.y = self.robot_initial_pose[1]
             home_pose.position.z = self.robot_initial_pose[2]
-            home_pose.orientation.w = self.robot_initial_pose[3]
-            home_pose.orientation.x = self.robot_initial_pose[4]
-            home_pose.orientation.y = self.robot_initial_pose[5]
-            home_pose.orientation.z = self.robot_initial_pose[6]
+            home_pose.orientation.x = self.robot_initial_pose[3]
+            home_pose.orientation.y = self.robot_initial_pose[4]
+            home_pose.orientation.z = self.robot_initial_pose[5]
+            home_pose.orientation.w = self.robot_initial_pose[6]
             
             # Publish home pose
             pose_stamped = PoseStamped()
@@ -661,6 +661,15 @@ class SimXArm5Driver(RobotDriverBase):
             
         except Exception as e:
             self.handle_error(f"Error initializing robot: {str(e)}")
+    
+    def start_component(self):
+        if self.compo_timers == [] or not self.compo_timers:
+            self.register_timer() #defined in the bottom node
+        else:
+            for timer in self.compo_timers:
+                # if timer.is_canceled():
+                timer.reset()
+        self.robot_active = True
 
     def urgent_stop(self):
         """Emergency stop - stop robot motion immediately"""
@@ -670,23 +679,24 @@ class SimXArm5Driver(RobotDriverBase):
         if self.robot_active and self.current_robot_joint_state:
             try:
                 current_pose = self.get_eef_pose_from_tf('link_base', 'link5')
-                if current_pose:
-                    pose_stamped = PoseStamped()
-                    pose_stamped.header.stamp = self.get_clock().now().to_msg()
-                    pose_stamped.header.frame_id = 'link_base'
-                    pose_stamped.pose = current_pose
-                    self.cartesian_target_pub.publish(pose_stamped)
+                self.home()
+                # if current_pose:
+                #     pose_stamped = PoseStamped()
+                #     pose_stamped.header.stamp = self.get_clock().now().to_msg()
+                #     pose_stamped.header.frame_id = 'link_base'
+                #     pose_stamped.pose = current_pose
+                #     self.cartesian_target_pub.publish(pose_stamped)
                 
-                # Stop gripper
-                if self.current_gripper_joint_state:
-                    current_gripper_pos = self.current_gripper_joint_state.position[0]
-                    self._send_gripper_trajectory(current_gripper_pos, current_gripper_pos)
+                # # Stop gripper
+                # if self.current_gripper_joint_state:
+                #     current_gripper_pos = self.current_gripper_joint_state.position[0]
+                #     self._send_gripper_trajectory(current_gripper_pos, current_gripper_pos)
                     
             except Exception as e:
                 self.logging(f"Error during urgent stop: {str(e)}", "ERROR")
         
         self.robot_active = False
-        self.stop_component()
+        # self.stop_component()
         
         self.logging("Emergency stop completed", "WARN")
 

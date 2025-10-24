@@ -94,14 +94,14 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                         )
                         self.get_logger().info(f"Subscribed to scene image: {topic_id}")
                     
-                    elif msg_type == "component_interfaces/msg/RobotState":
-                        self.compo_subscribers[topic_id] = self.create_subscription(
-                            RobotState,
-                            topic_id,
-                            self.robot_state_callback,
-                            10
-                        )
-                        self.get_logger().info(f"Subscribed to robot state: {topic_id}")
+                    # elif msg_type == "component_interfaces/msg/RobotState":
+                    #     self.compo_subscribers[topic_id] = self.create_subscription(
+                    #         RobotState,
+                    #         topic_id,
+                    #         self.robot_state_callback,
+                    #         10
+                    #     )
+                    #     self.get_logger().info(f"Subscribed to robot state: {topic_id}")
                 
                 # Create publishers for topics where this node is the publisher
                 if topic_config.get("publisher") == self.layer_cn_id:
@@ -319,7 +319,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         self.latest_scene_image = None
         self.latest_robot_state = None
         
-        self.stop_component()
+        # self.stop_component()
 
         self.set_state("disconnected")
         

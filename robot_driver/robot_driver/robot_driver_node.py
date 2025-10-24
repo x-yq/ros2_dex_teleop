@@ -23,13 +23,13 @@ def main(args=None):
 
 
     # These parameters will be set via the launch file
-    node = XArm5Driver(
+    node = SimXArm5Driver(
         layer_cn_id=layer_cn_id,          # to be overridden by launch
         ros2_domain_id=ros2_domain_id        # to be overridden by launch
     )
 
     try:
-        node.logging(f"XArm5Driver node started with layer_cn_id: {layer_cn_id}", "INFO")
+        node.logging(f"SimXArm5Driver node started with layer_cn_id: {layer_cn_id}", "INFO")
 
         executor = MultiThreadedExecutor()
         executor.add_node(node)

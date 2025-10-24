@@ -9,7 +9,6 @@ from std_msgs.msg import Header
 from cv_bridge import CvBridge
 from builtin_interfaces.msg import Time
 from core_bases.sensor_driver_base import SensorDriverBase
-from omegaconf import OmegaConf, DictConfig
 
 
 class RealsenseDriver(SensorDriverBase):
@@ -346,13 +345,22 @@ class RealsenseDriver(SensorDriverBase):
         timer = self.create_timer(timer_period, self.stream)
         self.compo_timers.append(timer)
 
+    def start_component(self):
+        if self.compo_timers == [] or not self.compo_timers:
+            self.register_timer() #defined in the bottom node
+        else:
+            for timer in self.compo_timers:
+                # if timer.is_canceled():
+                timer.reset()
+        self.start_sensor('realsense')
 
     def urgent_stop(self):
         """Emergency stop - stop streaming and cameras."""
         self.get_logger().warn("Emergency stop triggered")
             
         # Stop all cameras
-        self.stop_component()
+        # self.stop_component()
+        ## TODO: consider how to restart sensor when start component
         self.stop_sensor('realsense')
         self.set_state("disconnected")
         

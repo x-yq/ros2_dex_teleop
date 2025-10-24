@@ -16,7 +16,7 @@ from component_interfaces.msg import (
     ControlCmd
 )
 from std_msgs.msg import Header
-from geometry_msgs.msg import Point, Transform, TransformStamped
+from geometry_msgs.msg import Pose, Point, Transform, TransformStamped, Quaternion, PoseStamped
 from builtin_interfaces.msg import Time, Duration
 
 class MotionRetargetOT(MotionRetargetBase):
@@ -143,7 +143,7 @@ class MotionRetargetOT(MotionRetargetBase):
         t = time.time()
 
         # --- Base header ---
-        header = Header(stamp=self.get_clock().now().to_msg(), frame_id="xarm5_robot")
+        header = Header(stamp=self.get_clock().now().to_msg(), frame_id="xarm5")
 
         if self.space == 'joint':
             # --- 1. Joint-space command ---
@@ -172,13 +172,18 @@ class MotionRetargetOT(MotionRetargetBase):
             robot_cmd.pose.position.y = 0.2 + 0.05 * math.sin(t)
             robot_cmd.pose.position.z = 0.3
             robot_cmd.pose.orientation.w = 1.0
-            robot_cmd.timeout = Duration(sec=2)
+            # robot_cmd.pose.position.x = -0.1
+            # robot_cmd.pose.position.y = -0.3
+            # robot_cmd.pose.position.z = 0.2
+            # robot_cmd.pose.orientation.x = 1.0
+            # robot_cmd.pose.orientation.w = 0.0
+            robot_cmd.timeout = Duration(sec=5)
 
         # --- 3. Gripper command ---
         grip_cmd = ControlCmd()
         grip_cmd.header = header
         # grip_cmd.send_id = f"dummy_gripper_{int(t)}"
-        grip_cmd.robot_id = "xarm5"
+        grip_cmd.robot_id = "xarm_gripper"
         grip_cmd.relative = self.relative
         grip_cmd.space = "joint"
         grip_cmd.joint_names = ["drive_joint"]
@@ -200,12 +205,10 @@ class MotionRetargetOT(MotionRetargetBase):
         """
         try:
             if "robot_cmd" in cmd_dict:
-                self.robot_control_pub.publish(cmd_dict["robot_cmd"])
-                self.get_logger().info("Published dummy robot command")
+                self.publish_msg("robot_control_cmd",cmd_dict["robot_cmd"])
 
             if "gripper_cmd" in cmd_dict:
-                self.gripper_control_pub.publish(cmd_dict["gripper_cmd"])
-                self.get_logger().info("Published dummy gripper command")
+                self.publish_msg("gripper_control_cmd",cmd_dict["gripper_cmd"])
 
         except Exception as e:
             self.handle_error(f"Error publishing control commands: {str(e)}")
@@ -338,13 +341,13 @@ class MotionRetargetOT(MotionRetargetBase):
         stop_msg = ControlCmd()
         stop_msg.header = Header()
         stop_msg.header.stamp = self.get_clock().now().to_msg()
-        stop_msg.robot_id = "xarm5_robot"
+        stop_msg.robot_id = "xarm5"
         stop_msg.joint_names = self.robot_joint_names
         stop_msg.joint_angles = [0.0] * len(self.robot_joint_names)
         stop_msg.timeout = Duration(sec=0, nanosec=0)
         
-        self.publish_msg("joint_angles_cmd", stop_msg)
-        self.stop_component()
+        # self.publish_msg("joint_angles_cmd", stop_msg)
+        # self.stop_component()
         self.set_state("disconnected")
         
         self.get_logger().info("MotionRetargetOT emergency stopped successfully")

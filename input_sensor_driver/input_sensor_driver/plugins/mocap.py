@@ -340,7 +340,8 @@ class RococoDriver(SensorDriverBase):
     def register_timer(self):
         if self.compo_timers != []:
             for t in self.compo_timers:
-                t.cancel()
+                t.destroy()
+            self.compo_timers.clear()
 
         # Calculate timer period from frequency
         timer_period = 1.0 / self.freq
@@ -348,12 +349,22 @@ class RococoDriver(SensorDriverBase):
         self.logging(f"Registered timer at {self.freq}Hz", "INFO")
         self.compo_timers.append(timer)
 
+    
+    def start_component(self):
+        if self.compo_timers == [] or not self.compo_timers:
+            self.register_timer() #defined in the bottom node
+        else:
+            for timer in self.compo_timers:
+                # if timer.is_canceled():
+                timer.reset()
+        self.start_sensor('rococo')
+
     def urgent_stop(self):
         """Emergency stop - stop streaming and sensor."""
         self.logging("Emergency stop triggered", "WARN")
         
-        # stop the timer
-        self.stop_component()
+        # # stop the timer
+        # self.stop_component()
 
         # Stop sensor
         self.stop_sensor('rococo')

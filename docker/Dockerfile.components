@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     python3-colcon-common-extensions \
     python3-rosdep \
+    ros-humble-control-msgs \
     git \
     wget \
     curl \
@@ -34,7 +35,8 @@ RUN pip3 install --no-cache-dir \
     opencv-python \
     docker \
     psutil \
-    cv-bridge 
+    cv-bridge \
+    scipy
 
 ## Create workspace
 RUN mkdir -p ${WORKSPACE}/src
@@ -45,7 +47,7 @@ COPY core_bases ${WORKSPACE}/src/core_bases
 COPY component_interfaces ${WORKSPACE}/src/component_interfaces
 COPY system_interfaces ${WORKSPACE}/src/system_interfaces
 COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
-COPY config_files ${WORKSPACE}/src/config_files
+# COPY config_files ${WORKSPACE}/src/config_files
 
 ## TODO: Copy your other packages here
 # COPY ./ ${WORKSPACE}/src/

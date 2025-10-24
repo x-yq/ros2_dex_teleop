@@ -391,7 +391,7 @@ class DockerMonitor(KPIMonitorBase):
     def urgent_stop(self):
         """Emergency stop of the component."""
         self.stop_all_monitoring()
-        self.stop_component()
+        # self.stop_component()
         self.set_state("disconnected")
 
     def check_plugins(self):

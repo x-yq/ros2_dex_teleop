@@ -348,7 +348,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         """Emergency stop implementation"""
         self.get_logger().warn("URGENT STOP triggered for RococoHandKeypointProcessor")
 
-        self.stop_component()
+        # self.stop_component()
         self.set_state("disconnected")
         
         self.get_logger().info("RococoHandKeypointProcessor emergency stopped successfully")

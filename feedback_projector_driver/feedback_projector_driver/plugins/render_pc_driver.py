@@ -210,7 +210,7 @@ class RenderPCDriver(FeedbackProjectorDriverBase):
         self.latest_robot_state = None
         self.latest_hand_plot_data = None
         
-        self.stop_component()
+        # self.stop_component()
         self.set_state("disconnected")
         
         self.get_logger().info("RenderPCDriver emergency stopped successfully")

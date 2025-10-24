@@ -108,6 +108,7 @@ class ComponentNode(Node, ABC):
             elif command == "urgent_stop":
                 self.get_logger().warn(f"URGENT STOP command received from {request.sender}")
                 try:
+                    self.stop_component()
                     self.urgent_stop()
                     self.set_state("disconnected")
                     response.status = self.state
@@ -227,12 +228,13 @@ class ComponentNode(Node, ABC):
             self.register_timer() #defined in the bottom node
         else:
             for timer in self.compo_timers:
-                if timer.is_canceled():
-                    timer.reset()
+                # if timer.is_canceled():
+                timer.reset()
 
     def pause_component(self):
         if self.compo_timers and self.compo_timers!=[]:
             for timer in self.compo_timers:
+                # if timer is not None and not timer.is_canceled():
                 timer.cancel()
 
     # NOTE: API for urgent_stop()
@@ -241,8 +243,8 @@ class ComponentNode(Node, ABC):
             self._cleanup_latency_simulation()
         if self.compo_timers and self.compo_timers!=[]:
             for timer in self.compo_timers:
-                timer.destroy()
-
+                # if timer is not None and not timer.is_canceled():
+                timer.cancel()
 
     # ------------------------------------------------------------------
     # Service handling
