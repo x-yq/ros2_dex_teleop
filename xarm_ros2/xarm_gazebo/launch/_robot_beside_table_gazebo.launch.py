@@ -215,7 +215,7 @@ def launch_setup(context, *args, **kwargs):
                 output='screen',
                 arguments=[
                     controller,
-                    '--controller-manager', '{}/controller_manager'.format(ros_namespace), '--inactive'
+                    '--controller-manager', '{}/controller_manager'.format(ros_namespace),
                 ],
                 parameters=[{'use_sim_time': True}],
             ))
