@@ -147,7 +147,6 @@ class ComponentNode(Node, ABC):
                     response.message = f"Failed to execute pause: {e}"
                     response.success = False
                     self.get_logger().error(f"Error during pause: {e}")
-                
             else:
                 response.status = self.state
                 response.message = f"Unknown command received: {command}"

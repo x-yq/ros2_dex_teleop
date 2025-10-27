@@ -23,14 +23,13 @@ def launch_setup(context, *args, **kwargs):
     
     # Get hardware_id for this launch file
     hardware_id = get_exec_platform_id(deployment_config_path)
-    hardware_id = hardware_id.replace('-', '_')
-
-    print("hardware id!!!!!!!!!!", hardware_id)
     
     nodes = []
     
     # Determine monitor node name
     if hardware_id:
+        hardware_id = hardware_id.replace('-', '_')
+        print("hardware id!!!!!!!!!!", hardware_id)
         monitor_node_name = f"monitor_{hardware_id}"
     else:
         # Fallback to default if hardware_id not found

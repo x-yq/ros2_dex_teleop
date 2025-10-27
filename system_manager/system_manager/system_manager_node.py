@@ -743,52 +743,55 @@ class SystemManager(Node):
 
     def get_config_srv_callback(self, request, response):
         """Handle configuration retrieval requests with special handling for DataCollector"""
+
+        self._initialize_configs()
         try:
             config_name = request.config_file_name.lower().strip()
             config_keys = request.config_keys
             
-            # Check if this is a demo config request that might need updating
-            if config_name == 'demo':
+            # # Check if this is a demo config request that might need updating
+            # if config_name == 'demo':
                 
-                # Update demo config (will only update if necessary)
-                updated_demo_config = self._update_demo_config_for_data_collector()
-                config_data = updated_demo_config
-                matched_key = 'demo'
+            #     # Update demo config (will only update if necessary)
+            #     updated_demo_config = self._update_demo_config_for_data_collector()
+            #     config_data = updated_demo_config
+            #     matched_key = 'demo'
                 
+            # else:
+                
+            # Regular config retrieval logic (existing code)
+            config_data = None
+            matched_key = None
+            
+            # First, try exact match
+            if config_name in self.all_configs:
+                config_data = self.all_configs[config_name]
+                matched_key = config_name
             else:
-                # Regular config retrieval logic (existing code)
-                config_data = None
-                matched_key = None
+                # Try to find partial matches or aliases
+                possible_matches = []
                 
-                # First, try exact match
-                if config_name in self.all_configs:
-                    config_data = self.all_configs[config_name]
-                    matched_key = config_name
-                else:
-                    # Try to find partial matches or aliases
-                    possible_matches = []
-                    
-                    for key in self.all_configs.keys():
-                        # Check for exact match (case insensitive)
-                        if key.lower() == config_name:
-                            config_data = self.all_configs[key]
-                            matched_key = key
-                            break
-                        # Check for partial matches
-                        elif config_name in key.lower() or key.lower() in config_name:
-                            possible_matches.append((key, self.all_configs[key]))
-                    
-                    # If no exact match found but we have partial matches
-                    if config_data is None and possible_matches:
-                        if len(possible_matches) == 1:
-                            matched_key, config_data = possible_matches[0]
-                        else:
-                            # Multiple matches found, list them
-                            match_keys = [match[0] for match in possible_matches]
-                            response.success = False
-                            response.message = f"Multiple configurations match '{config_name}': {match_keys}. Please be more specific."
-                            response.config_data = "{}"
-                            return response
+                for key in self.all_configs.keys():
+                    # Check for exact match (case insensitive)
+                    if key.lower() == config_name:
+                        config_data = self.all_configs[key]
+                        matched_key = key
+                        break
+                    # Check for partial matches
+                    elif config_name in key.lower() or key.lower() in config_name:
+                        possible_matches.append((key, self.all_configs[key]))
+                
+                # If no exact match found but we have partial matches
+                if config_data is None and possible_matches:
+                    if len(possible_matches) == 1:
+                        matched_key, config_data = possible_matches[0]
+                    else:
+                        # Multiple matches found, list them
+                        match_keys = [match[0] for match in possible_matches]
+                        response.success = False
+                        response.message = f"Multiple configurations match '{config_name}': {match_keys}. Please be more specific."
+                        response.config_data = "{}"
+                        return response
             
             if config_data is not None:
                 # Filter by requested keys if specified
