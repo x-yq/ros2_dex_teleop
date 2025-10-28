@@ -12,7 +12,7 @@ from pathlib import Path
 from ament_index_python import get_package_share_directory
 from launch.launch_description_sources import load_python_launch_file_as_module
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, RegisterEventHandler
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument, RegisterEventHandler, ExecuteProcess
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -166,6 +166,18 @@ def launch_setup(context, *args, **kwargs):
         parameters=[{'use_sim_time': True}],
     )
 
+    # Camera spawn
+    camera_model_path = PathJoinSubstitution([FindPackageShare('xarm_gazebo'), 'worlds', 'sim_camera.sdf'])
+    gazebo_spawn_camera_process = ExecuteProcess(
+        cmd=[
+            'ros2', 'run', 'gazebo_ros', 'spawn_entity.py',
+            '-entity', 'sim_camera',
+            '-file', camera_model_path,
+        ],
+        output='screen',
+        shell=False  # Set to True if you encounter command parsing issues
+    )
+
     # rviz with moveit configuration
     rviz_config_file = PathJoinSubstitution([FindPackageShare(moveit_config_package_name), 'rviz', 'planner.rviz' if no_gui_ctrl.perform(context) == 'true' else 'moveit.rviz'])
     rviz2_node = Node(
@@ -195,7 +207,7 @@ def launch_setup(context, *args, **kwargs):
     controllers = [
         'joint_state_broadcaster',
         '{}{}_cartesian_motion_controller'.format(prefix.perform(context), xarm_type),
-        '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
+        # '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
         # 'cartesian_impedance_controller',
         # 'pose_broadcaster',
         # 'gravity_compensation',
@@ -235,6 +247,12 @@ def launch_setup(context, *args, **kwargs):
                 )
             ),
             RegisterEventHandler(
+                event_handler=OnProcessStart(
+                    target_action=robot_state_publisher_node,
+                    on_start=gazebo_spawn_camera_process,  # ADD THIS LINE - using process instead of node
+                )
+            ),
+            RegisterEventHandler(
                 condition=IfCondition(show_rviz),
                 event_handler=OnProcessExit(
                     target_action=gazebo_spawn_entity_node,
@@ -263,6 +281,12 @@ def launch_setup(context, *args, **kwargs):
                 event_handler=OnProcessStart(
                     target_action=robot_state_publisher_node,
                     on_start=gazebo_spawn_entity_node,
+                )
+            ),
+            RegisterEventHandler(
+                event_handler=OnProcessStart(
+                    target_action=robot_state_publisher_node,
+                    on_start=gazebo_spawn_camera_process,  # ADD THIS LINE - using process instead of node
                 )
             ),
             RegisterEventHandler(

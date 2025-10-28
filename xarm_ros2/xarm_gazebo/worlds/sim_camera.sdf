@@ -1,0 +1,37 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="sim_camera">
+    <pose>3 -3 2 0 0.275 2.356</pose>
+    <link name="link">
+      <sensor name="camera" type="camera">
+        <camera>
+          <horizontal_fov>1.047</horizontal_fov>
+          <image>
+            <width>1024</width>
+            <height>720</height>
+            <format>R8G8B8</format>
+          </image>
+          <clip>
+            <near>0.1</near>
+            <far>100</far>
+          </clip>
+          <noise>
+            <type>gaussian</type>
+            <mean>0.0</mean>
+            <stddev>0.007</stddev>
+          </noise>
+        </camera>
+        <always_on>true</always_on>
+        <update_rate>60</update_rate>
+        <plugin name="camera_controller" filename="libgazebo_ros_camera.so">
+          <ros>
+            <namespace>/sim_camera</namespace>
+          </ros>
+          <camera_name>camera</camera_name>
+          <frame_name>camera_link</frame_name>
+          <hack_baseline>0.07</hack_baseline>
+        </plugin>
+      </sensor>
+    </link>
+  </model>
+</sdf>
