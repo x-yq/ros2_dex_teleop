@@ -48,10 +48,10 @@ class VRDriver(FeedbackProjectorDriverBase):
         super().__init__(layer_cn_id, ros2_domain_id)
         
         # Additional attributes for this specific driver
-        self.width = 1280
-        self.height = 720
+        self.width = 480
+        self.height = 480
         self.execution_platform_ip = '192.168.50.228'
-        self.vr_port = 0
+        self.vr_port = 10005
 
         self.freq = 60
         
@@ -59,6 +59,10 @@ class VRDriver(FeedbackProjectorDriverBase):
         self.latest_scene_image = None
         self.latest_hand_plot_data = None
         self.bridge = CvBridge()
+        self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
+            host = self.execution_platform_ip,
+            port = self.vr_port + 500
+        )
         
         # Dummy projection parameters
         self.last_projection_time = self.get_clock().now()
@@ -124,10 +128,10 @@ class VRDriver(FeedbackProjectorDriverBase):
                         )
                         self.get_logger().info(f"Subscribed to {topic_id}")
             
-            self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
-				host = self.execution_platform_ip,
-				port = self.vr_port + 500
-			)
+            # self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
+			# 	host = self.execution_platform_ip,
+			# 	port = self.vr_port + 500
+			# )
             self.get_logger().info("All subscriptions registered successfully")
             
         except Exception as e:
@@ -143,7 +147,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         self.latest_hand_plot_data = msg
         self.get_logger().debug(f"Received hand plot data for {msg.hand_id}")
 
-    def _rescale_image(image, rescale_factor):
+    def _rescale_image(self, image, rescale_factor):
         width, height = int(image.shape[1] / rescale_factor), int(image.shape[0] / rescale_factor)
         return cv2.resize(image, (width, height), interpolation = cv2.INTER_AREA)
 
@@ -178,7 +182,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         }
         
         # Project the data
-        success = self.project_feedback("vr", projection_data)
+        success = self.project_feedback("vr", projection_data["content"])
         
         if success:
             self.get_logger().debug("Dummy projection completed successfully")
@@ -188,7 +192,7 @@ class VRDriver(FeedbackProjectorDriverBase):
     def generate_dummy_projection_content(self) -> Dict[str, Any]:
         """Generate dummy projection content for testing"""
         # # Create a dummy image
-        # dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
+        dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
         
         # Create dummy hand plot data
         dummy_hand_plot = {
@@ -198,7 +202,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         }
         
         return {
-            "image": self.latest_scene_image, #TODO: change to self.latest_scene_image
+            "image": dummy_image, #self.latest_scene_image, #TODO: change to self.latest_scene_image
             "hand_plot": dummy_hand_plot,
             "timestamp": self.get_clock().now().to_msg().sec
         }
