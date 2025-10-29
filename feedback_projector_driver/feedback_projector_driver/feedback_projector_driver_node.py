@@ -1,6 +1,7 @@
 import rclpy
 from rclpy.executors import MultiThreadedExecutor
 from .plugins.render_pc_driver import RenderPCDriver
+from .plugins.vr_driver import VRDriver
 import sys
 
 
@@ -24,13 +25,13 @@ def main(args=None):
 
 
     # These parameters will be set via the launch file
-    node = RenderPCDriver(
+    node = VRDriver(
         layer_cn_id=layer_cn_id,          # to be overridden by launch
         ros2_domain_id=ros2_domain_id        # to be overridden by launch
     )
 
     try:
-        node.logging(f"RenderPCDriver node started with layer_cn_id: {layer_cn_id}", "INFO")
+        node.logging(f"VRDriver node started with layer_cn_id: {layer_cn_id}", "INFO")
 
         executor = MultiThreadedExecutor()
         executor.add_node(node)

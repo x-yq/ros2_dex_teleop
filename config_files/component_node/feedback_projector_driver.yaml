@@ -1,4 +1,4 @@
-# /root/dev_ws/src/feedback_projector_driver/feedback_projector_driver/plugins/render_pc_driver.py: RenderPCDriver
+# /root/dev_ws/src/feedback_projector_driver/feedback_projector_driver/plugins/vr_driver.py: RenderPCDriver
 
 layer_cn_id: feedback_projector_driver ## must be node name
 pkg_name: feedback_projector_driver ## ros2 pkg name
@@ -11,12 +11,14 @@ meta:
   ros2_domain_id: None # optional
   
 # fallback plugin
-default_plugin: render_pc_driver
+default_plugin: vr_driver
 
 plugins:
-  - id: render_pc_driver 
-    _target_: render_pc_driver.RenderPCDriver
+  - id: vr_driver 
     priority: 1
     params: # for node with plugin initialization
       width: 1280
       height: 720
+      execution_platform_ip: 192.168.50.228
+      vr_port: 10005
+      freq: 60

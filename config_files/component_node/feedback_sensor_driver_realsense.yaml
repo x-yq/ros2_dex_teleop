@@ -20,8 +20,8 @@ plugins:
       cam_ids: [0]
       width: 1280
       height: 720
-      fps: 1
-      fps_sim: 1
+      fps: 30
+      fps_sim: 30
       rotation_angle: 0
       processing_preset: 1
       constants:
