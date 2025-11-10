@@ -38,9 +38,10 @@ services:
       dockerfile: docker/Dockerfile.components
     container_name: teleop-components
     environment:
-      - DISPLAY=0
       - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
       - CONTAINER_NAME=teleop-components
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=${HOME}/.Xauthority
     network_mode: host
     ipc: host
     privileged: true
@@ -54,6 +55,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /run/udev:/run/udev
       - /dev:/dev
+      - ${HOME}/.Xauthority:${HOME}/.Xauthority
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
     device_cgroup_rules:
       - 'c *:* rmw'
     command: >

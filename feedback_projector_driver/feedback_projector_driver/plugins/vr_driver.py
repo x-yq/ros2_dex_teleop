@@ -48,12 +48,13 @@ class VRDriver(FeedbackProjectorDriverBase):
         super().__init__(layer_cn_id, ros2_domain_id)
         
         # Additional attributes for this specific driver
-        self.width = 480
-        self.height = 480
-        self.execution_platform_ip = '192.168.50.228'
-        self.vr_port = 10005
+        self.width = 1280
+        self.height = 720
+        self.execution_platform_ip = '192.168.178.54'
+        self.vr_cam_port = 10505
+        self.vr_graph_port = 15001
 
-        self.freq = 60
+        self.freq = 30
         
         # Store latest received data
         self.latest_scene_image = None
@@ -61,9 +62,13 @@ class VRDriver(FeedbackProjectorDriverBase):
         self.bridge = CvBridge()
         self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
             host = self.execution_platform_ip,
-            port = self.vr_port + 500
+            port = self.vr_cam_port
         )
-        
+
+        self.hand_2d_zmq_publisher = ZMQCompressedImageTransmitter(
+            host = self.execution_platform_ip,
+            port = self.vr_graph_port
+        )        
         # Dummy projection parameters
         self.last_projection_time = self.get_clock().now()
 
@@ -86,8 +91,8 @@ class VRDriver(FeedbackProjectorDriverBase):
                         self.width = plugin_params.get("width", self.width)
                         self.height = plugin_params.get("height", self.height)
                         self.freq = plugin_params.get("freq", self.freq)
-                        self.execution_platform_ip = plugin_params.get("execution_platform_ip", self.execution_platform_ip)
-                        self.vr_port = plugin_params.get("vr_port", self.vr_port)
+                        # self.execution_platform_ip = plugin_params.get("execution_platform_ip", self.execution_platform_ip)
+                        # self.vr_port = plugin_params.get("vr_port", self.vr_port)
                         self.get_logger().info(f"Loaded display config: {self.width}x{self.height}")
                         break
             self.get_logger().info("All configurations loaded successfully")
@@ -147,9 +152,27 @@ class VRDriver(FeedbackProjectorDriverBase):
         self.latest_hand_plot_data = msg
         self.get_logger().debug(f"Received hand plot data for {msg.hand_id}")
 
+    # def _rescale_image(self, image, rescale_factor):
+    #     width, height = int(image.shape[1] / rescale_factor), int(image.shape[0] / rescale_factor)
+    #     img = cv2.resize(image, (width, height), interpolation = cv2.INTER_AREA)
+    #     cv2.imshow('dummy rgb image', img)
+    #     return img
+
     def _rescale_image(self, image, rescale_factor):
-        width, height = int(image.shape[1] / rescale_factor), int(image.shape[0] / rescale_factor)
-        return cv2.resize(image, (width, height), interpolation = cv2.INTER_AREA)
+        # Ensure RGB format
+        if len(image.shape) == 2:  # grayscale
+            img_rgb = cv2.cvtColor(image, cv2.COLOR_GRAY2RGB)
+        else:  # assume BGR (OpenCV default)
+            img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+
+        # Rescale
+        width, height = int(img_rgb.shape[1] / rescale_factor), int(img_rgb.shape[0] / rescale_factor)
+        img_rescaled = cv2.resize(img_rgb, (width, height), interpolation=cv2.INTER_AREA)
+
+        # # Display (OpenCV expects BGR)
+        # cv2.imshow('dummy rgb image', cv2.cvtColor(img_rescaled, cv2.COLOR_RGB2BGR))
+        # cv2.waitKey(1)
+        return img_rescaled
 
     def project_feedback(self, projector_id: str, data: Dict[str, Any]):
         """
@@ -165,7 +188,8 @@ class VRDriver(FeedbackProjectorDriverBase):
             self.get_logger().info(f"Projecting image with shape {data['image'].shape if hasattr(data['image'], 'shape') else 'unknown'}")
         
         if "hand_plot" in data:
-            self.get_logger().info(f"Projecting hand plot with {len(data['hand_plot'].get('joints', []))} joints")
+            self.hand_2d_zmq_publisher.send_image(self._rescale_image(data['hand_plot'], 1))
+            self.get_logger().info(f"Projecting hand plot")
         
         # Simulate projection success
         return True
@@ -195,11 +219,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
         
         # Create dummy hand plot data
-        dummy_hand_plot = {
-            "hand_id": "right_hand",
-            "joints": np.random.rand(16, 2).tolist(),
-            "joint_names": [f"joint_{i}" for i in range(16)]
-        }
+        dummy_hand_plot = np.random.randint(0,255,(128,128,3), dtype=np.uint8)
         
         return {
             "image": dummy_image, #self.latest_scene_image, #TODO: change to self.latest_scene_image

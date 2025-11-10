@@ -36,6 +36,7 @@ RUN pip3 install --no-cache-dir \
     docker \
     psutil \
     cv-bridge \
+    pyzmq \
     scipy
 
 ## Create workspace
