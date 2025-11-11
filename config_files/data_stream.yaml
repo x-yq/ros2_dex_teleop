@@ -17,6 +17,7 @@ topics:
     subscribers: [motion_retarget, feedback_data_processor] # could be multi subscribers
     dtype: float32 # for data collection based on robo-dm
   
+  # done
   - id: robot_control_cmd
     latency_test_target: False
     msg_type: component_interfaces/msg/ControlCmd
@@ -26,6 +27,7 @@ topics:
     subscribers: [robot_driver]
     dtype: float32
 
+  # done
   - id: gripper_control_cmd 
     latency_test_target: False
     msg_type: component_interfaces/msg/ControlCmd
@@ -51,25 +53,27 @@ topics:
     publisher: robot_driver
     subscribers: [feedback_data_processor]
 
-  - id: scene_image_raw 
+  # done
+  - id: /sim_camera/camera/image_raw 
     latency_test_target: False
     msg_type: sensor_msgs/msg/Image
-    publish_freq: 30
+    publish_freq: 60
     frame_id: xarm5_robot
-    publisher: feedback_sensor_driver
-    subscribers: [feedback_data_processor]
-    encoding: rgb8
-    dtype: unit8
-
-  - id: scene_image_processed
-    latency_test_target: False
-    msg_type: component_interfaces/msg/SceneImage
-    publish_freq: 30
-    frame_id: xarm5_robot
-    publisher: feedback_data_processor
+    publisher: sim_camera
     subscribers: [feedback_projector_driver]
     encoding: rgb8
     dtype: unit8
+
+  # # done
+  # - id: scene_image_processed
+  #   latency_test_target: False
+  #   msg_type: component_interfaces/msg/SceneImage
+  #   publish_freq: 60
+  #   frame_id: xarm5_robot
+  #   publisher: feedback_data_processor
+  #   subscribers: [feedback_projector_driver]
+  #   encoding: rgb8
+  #   dtype: unit8
 
   - id: handkeypoint_plot_2d
     latency_test_target: False

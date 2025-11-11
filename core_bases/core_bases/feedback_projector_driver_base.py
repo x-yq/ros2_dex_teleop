@@ -43,19 +43,6 @@ class FeedbackProjectorDriverBase(ComponentNode, ABC):
             self.get_logger().warn("No hardware config found")
             self.hardware_config = {}
 
-    @abstractmethod
-    def project_feedback(self, projector_id: str, data: Dict[str, Any]):
-        """
-        Project feedback data using the specified projector.
-        
-        Args:
-            projector_id: Hardware ID of the projector (from config files)
-            data: Feedback data to be projected
-            
-        This method must be implemented by concrete projector driver classes.
-        """
-        pass
-
     def register_pub_sub(self):
         """Register publishers and subscribers based on configuration."""
         # This will be implemented by subclasses based on their specific needs

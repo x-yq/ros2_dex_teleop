@@ -17,7 +17,7 @@ plugins:
     _target_: input_data_processor.input_data_processor.plugins.mocap_data_processor.RococoHandKeypointProcessor
     priority: 1
     params: # for node with plugin initialization
-      frequency: 1
+      frequency: 90
       # simulate_latency: 100
 
 

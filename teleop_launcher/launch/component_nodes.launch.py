@@ -83,13 +83,13 @@ def launch_setup(context, *args, **kwargs):
             output="screen",
             arguments=["--layer_cn_id", context.launch_configurations['robot_driver'], "--ros2_domain_id", ros_domain_id]
         ),
-        Node(
-            package="feedback_sensor_driver",
-            executable="feedback_sensor_driver_node",
-            name="feedback_sensor_driver",
-            output="screen",
-            arguments=["--layer_cn_id", context.launch_configurations['feedback_sensor_driver'], "--ros2_domain_id", ros_domain_id]
-        ),
+        # Node(
+        #     package="feedback_sensor_driver",
+        #     executable="feedback_sensor_driver_node",
+        #     name="feedback_sensor_driver",
+        #     output="screen",
+        #     arguments=["--layer_cn_id", context.launch_configurations['feedback_sensor_driver'], "--ros2_domain_id", ros_domain_id]
+        # ),
         Node(
             package="feedback_data_processor",
             executable="feedback_data_processor_node",
