@@ -17,6 +17,60 @@ from component_interfaces.msg import (
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
 from builtin_interfaces.msg import Time
+import threading
+import time
+
+# class ZMQCompressedImageTransmitter(object):
+#     def __init__(self, host, port):
+#         self._host, self._port = host, port
+#         self._init_publisher()
+
+#     def _init_publisher(self):
+#         self.context = zmq.Context()
+#         self.socket = self.context.socket(zmq.PUB)
+        
+#         # CRITICAL FIXES:
+#         # 1. Set high water mark to 1 - only keep the latest frame
+#         self.socket.setsockopt(zmq.SNDHWM, 1)
+#         self.socket.setsockopt(zmq.RCVHWM, 1)
+        
+#         # 2. Don't wait when sending if buffer is full (non-blocking)
+#         self.socket.setsockopt(zmq.SNDTIMEO, 0)
+                
+#         # 4. Set linger to 0 so socket closes immediately
+#         self.socket.setsockopt(zmq.LINGER, 0)
+
+#         try:
+#             self.socket.setsockopt(zmq.CONFLATE, 1)
+#         except AttributeError:
+#             print("CONFLATE not available in this ZMQ version")
+        
+#         # 5. Bind to the address
+#         self.socket.bind(f'tcp://{self._host}:{self._port}')
+        
+#         print(f'ZMQ PUB socket bound to tcp://{self._host}:{self._port}')
+
+#     def send_image(self, rgb_image):
+#         """Send image, skip if buffer is full"""
+#         try:
+#             # Encode with lower quality for faster transmission
+#             _, buffer = cv2.imencode('.jpg', rgb_image, 
+#                                     [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            
+#             # Send with NOBLOCK flag - will skip if buffer is full
+#             self.socket.send(np.array(buffer).tobytes(), flags=zmq.NOBLOCK)
+            
+#         except zmq.Again:
+#             # Buffer full, skip this frame (this is OK for video streaming)
+#             print(f"Warning: Skipped frame on {self._port} - buffer full")
+#             pass
+#         except Exception as e:
+#             print(f"Error sending image on {self._port}: {e}")
+
+#     def stop(self):
+#         print(f'Closing the publisher on {self._host}:{self._port}')
+#         self.socket.close()
+#         self.context.term()
 
 class ZMQCompressedImageTransmitter(object):
     def __init__(self, host, port):
@@ -59,18 +113,15 @@ class VRDriver(FeedbackProjectorDriverBase):
         # Store latest received data
         self.latest_scene_image = None
         self.latest_hand_plot_data = None
-        self.bridge = CvBridge()
-        self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
-            host = self.execution_platform_ip,
-            port = self.vr_cam_port
-        )
-
-        self.hand_2d_zmq_publisher = ZMQCompressedImageTransmitter(
-            host = self.execution_platform_ip,
-            port = self.vr_graph_port
-        )        
+        self.bridge = CvBridge()   
+        self.rgb_viz_zmq_publisher = None
+        self.hand_2d_zmq_publisher = None
+        self.raw_keypoint_left_socket = None
+        self.raw_keypoint_right_socket = None
+        self.button_feedback = None
 
         self._load_my_config()
+        self._register_zmq_pub()   
 
     def _load_my_config(self):
         """Load all required configurations using ComponentNode methods"""
@@ -99,6 +150,31 @@ class VRDriver(FeedbackProjectorDriverBase):
             
         except Exception as e:
             self.handle_error("Failed to load configurations", e)
+
+    def create_pull_socket(self, host, port):
+        context = zmq.Context()
+        socket = context.socket(zmq.PULL)
+        socket.setsockopt(zmq.CONFLATE, 1)
+        socket.bind('tcp://{}:{}'.format(host, port))
+        return socket
+
+    def _register_zmq_pub(self):
+        
+        if self.rgb_viz_zmq_publisher:
+            self.rgb_viz_zmq_publisher.stop()
+        self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
+            host = self.execution_platform_ip,
+            port = self.vr_cam_port
+        )
+
+        self.hand_2d_zmq_publisher = ZMQCompressedImageTransmitter(
+            host = self.execution_platform_ip,
+            port = self.vr_graph_port
+        )
+
+        self.raw_keypoint_left_socket = self.create_pull_socket(self.execution_platform_ip, 8110)
+        self.raw_keypoint_right_socket = self.create_pull_socket(self.execution_platform_ip, 8087)
+        self.button_keypoint_socket = self.create_pull_socket(self.execution_platform_ip, 8095)
 
     def register_pub_sub(self):
         """Register subscribers based on data_stream configuration"""
@@ -132,15 +208,6 @@ class VRDriver(FeedbackProjectorDriverBase):
                             10
                         )
                         self.get_logger().info(f"Subscribed to {topic_id}")
-            
-            self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
-				host = self.execution_platform_ip,
-				port = self.vr_cam_port
-			)
-            self.hand_2d_zmq_publisher = ZMQCompressedImageTransmitter(
-				host = self.execution_platform_ip,
-				port = self.vr_graph_port
-			)
 
             self.get_logger().info("All subscriptions registered successfully")
             
@@ -149,20 +216,21 @@ class VRDriver(FeedbackProjectorDriverBase):
 
     def scene_image_callback(self, msg: Image):
         """Callback for processed scene image data"""
-        self.latest_scene_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        self.get_logger().info(f"Received scene image from sim_camera")
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.latest_scene_image = self._rescale_image(img, 2)
+        # self.get_logger().info(f"Received scene image from sim_camera")
         
-        dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
-        self.rgb_viz_zmq_publisher.send_image(self._rescale_image(self.latest_scene_image, 2))
+        # dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
+        # self.rgb_viz_zmq_publisher.send_image(self._rescale_image(self.latest_scene_image, 2))
         # self.get_logger().info(f"Projecting image with shape {self.latest_scene_image.shape if hasattr(self.latest_scene_image, 'shape') else 'unknown'}")
 
     def hand_plot_callback(self, msg: Hand2DPlotData):
         """Callback for hand 2D plot data"""      
         self.latest_hand_plot_data = msg
-        dummy_hand_plot = np.random.randint(0,255,(128,128,3), dtype=np.uint8)
+        # dummy_hand_plot = np.random.randint(0,255,(128,128,3), dtype=np.uint8)
 
-        self.get_logger().info(f"Received hand plot data for {msg.hand_id}")
-        self.hand_2d_zmq_publisher.send_image(self._rescale_image(dummy_hand_plot, 1)) #TODO: change to self.latest_hand_plot_data
+        # self.get_logger().info(f"Received hand plot data for {msg.hand_id}")
+        # self.hand_2d_zmq_publisher.send_image(self._rescale_image(dummy_hand_plot, 1)) #TODO: change to self.latest_hand_plot_data
         # self.get_logger().info(f"Projecting hand plot")
 
     def _rescale_image(self, image, rescale_factor):
@@ -178,36 +246,40 @@ class VRDriver(FeedbackProjectorDriverBase):
         # cv2.waitKey(1)
         return img_rescaled
 
-    # def periodic_projection(self):
-    #     """Periodically project dummy data for testing"""
+    def periodic_projection(self):
+        """Periodically project dummy data for testing"""
                     
-    #     # Project the data
+        # Project the data
 
-    #     dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
+        dummy_image = np.random.randint(0, 255, (self.height, self.width, 3), dtype=np.uint8)
         
-    #     # Create dummy hand plot data
-    #     dummy_hand_plot = np.random.randint(0,255,(128,128,3), dtype=np.uint8)
+        # Create dummy hand plot data
+        dummy_hand_plot = np.random.randint(0,255,(128,128,3), dtype=np.uint8)
         
         
-    #     # Simulate some projection work
-    #     self.rgb_viz_zmq_publisher.send_image(self._rescale_image(self.latest_scene_image, 2))
-    #     self.get_logger().info(f"Projecting image with shape {self.latest_scene_image.shape if hasattr(self.latest_scene_image, 'shape') else 'unknown'}")
+        # Simulate some projection work
+        self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
+        # self.get_logger().info(f"Projecting image with shape {self.latest_scene_image.shape if hasattr(self.latest_scene_image, 'shape') else 'unknown'}")
     
-    #     self.hand_2d_zmq_publisher.send_image(self._rescale_image(dummy_hand_plot, 1)) #TODO: change to self.latest_hand_plot_data
-    #     self.get_logger().info(f"Projecting hand plot")
+        self.hand_2d_zmq_publisher.send_image(self._rescale_image(dummy_hand_plot, 1)) #TODO: change to self.latest_hand_plot_data
+        # self.get_logger().info(f"Projecting hand plot")
+
+        raw_right_keypoints = self.raw_keypoint_right_socket.recv()
+        raw_left_keypoints = self.raw_keypoint_left_socket.recv()
+        button_feedback = self.button_keypoint_socket.recv()
 
     
-    # def register_timer(self):
-    #     if self.compo_timers != []:
-    #         for t in self.compo_timers:
-    #             t.destroy()
-    #         self.compo_timers.clear()
+    def register_timer(self):
+        if self.compo_timers != []:
+            for t in self.compo_timers:
+                t.destroy()
+            self.compo_timers.clear()
 
-    #     # Calculate timer period from frequency
-    #     timer_period = 1.0 / self.freq
-    #     timer = self.create_timer(timer_period, self.periodic_projection)
-    #     self.logging(f"Registered timer at {self.freq}Hz", "INFO")
-    #     self.compo_timers.append(timer)
+        # Calculate timer period from frequency
+        timer_period = 1.0 / self.freq
+        timer = self.create_timer(timer_period, self.periodic_projection)
+        self.logging(f"Registered timer at {self.freq}Hz", "INFO")
+        self.compo_timers.append(timer)
 
     def urgent_stop(self):
         """Emergency stop implementation"""
@@ -216,6 +288,10 @@ class VRDriver(FeedbackProjectorDriverBase):
         # Clear all data
         self.latest_scene_image = None
         self.latest_hand_plot_data = None
+
+        self.rgb_viz_zmq_publisher.stop()
+        self.raw_keypoint_left_socket.close()
+        self.raw_keypoint_right_socket.close()
         
         # self.stop_component()
         self.set_state("disconnected")
