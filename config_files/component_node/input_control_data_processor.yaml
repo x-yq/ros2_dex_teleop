@@ -10,11 +10,10 @@ meta:
   ros2_domain_id: None # optional
   
 # fallback plugin
-default_plugin: rococo_handkeypoint_processor
+default_plugin: vr_handkeypoint_processor
 
 plugins:
-  - id: rococo_handkeypoint_processor
-    _target_: input_data_processor.input_data_processor.plugins.mocap_data_processor.RococoHandKeypointProcessor
+  - id: vr_handkeypoint_processor
     priority: 1
     params: # for node with plugin initialization
       frequency: 90

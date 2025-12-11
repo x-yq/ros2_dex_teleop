@@ -1,5 +1,5 @@
 import rclpy
-from .plugins.mocap import RococoDriver
+from .plugins.vr_detector import VRDetectorDriver
 from rclpy.executors import MultiThreadedExecutor
 import sys
 
@@ -22,13 +22,13 @@ def main(args=None):
                 ros2_domain_id = int(sys.argv[i + 1])
 
     # Create the driver node with the parsed parameters
-    node = RococoDriver(
+    node = VRDetectorDriver(
         layer_cn_id=layer_cn_id,
         ros2_domain_id=ros2_domain_id
     )
 
     try:
-        node.logging(f"RococoDriver node started with layer_cn_id: {layer_cn_id}", "INFO")
+        node.logging(f"VRDetectorDriver node started with layer_cn_id: {layer_cn_id}", "INFO")
 
         executor = MultiThreadedExecutor()
         executor.add_node(node)

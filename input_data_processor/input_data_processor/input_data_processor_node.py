@@ -1,5 +1,5 @@
 import rclpy
-from .plugins.mocap_data_processor import RococoHandKeypointProcessor
+from .plugins.vr_data_processor import VRHandKeypointProcessor
 from rclpy.executors import MultiThreadedExecutor
 import sys
 
@@ -23,13 +23,13 @@ def main(args=None):
 
 
     # These parameters will be set via the launch file
-    node = RococoHandKeypointProcessor(
+    node = VRHandKeypointProcessor(
         layer_cn_id=layer_cn_id,          # to be overridden by launch
         ros2_domain_id=ros2_domain_id        # to be overridden by launch
     )
 
     try:
-        node.logging(f"RococoHandKeypointProcessor node with layer_cn_id: {layer_cn_id}", "INFO")
+        node.logging(f"VRHandKeypointProcessor node with layer_cn_id: {layer_cn_id}", "INFO")
 
         executor = MultiThreadedExecutor()
         executor.add_node(node)

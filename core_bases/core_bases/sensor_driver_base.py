@@ -6,7 +6,7 @@ import yaml
 from typing import Dict, List, Any, Optional
 import rclpy
 from rclpy.publisher import Publisher
-
+import zmq
 from .component_node import ComponentNode
 
 
@@ -108,6 +108,13 @@ class SensorDriverBase(ComponentNode, ABC):
 
     def _load_my_config(self):
         self.logging("Base _load_my_config called - should be overridden", "WARN")
+
+    def create_pull_socket(self, host, port):
+        context = zmq.Context()
+        socket = context.socket(zmq.PULL)
+        socket.setsockopt(zmq.CONFLATE, 1)
+        socket.bind('tcp://{}:{}'.format(host, port))
+        return socket
 
     def check_plugins(self):
         """Verify that plugins implement required interfaces."""

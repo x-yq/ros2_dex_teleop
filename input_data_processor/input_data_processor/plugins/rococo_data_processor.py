@@ -15,7 +15,7 @@ from std_msgs.msg import Header
 from geometry_msgs.msg import Point, Pose
 from builtin_interfaces.msg import Time
 
-class RococoHandKeypointProcessor(DataProcessorBase):
+class ROCOCOHandKeypointProcessor(DataProcessorBase):
     def __init__(self, layer_cn_id: str, ros2_domain_id: Optional[int] = None):
         super().__init__(layer_cn_id, ros2_domain_id)
         
@@ -41,7 +41,6 @@ class RococoHandKeypointProcessor(DataProcessorBase):
         if self.simulate_latency > 0:
             self._setup_latency_simulation()
 
-
     def _load_my_config(self):
         """Load processor-specific configuration using component_node config methods"""
         try:
@@ -51,7 +50,7 @@ class RococoHandKeypointProcessor(DataProcessorBase):
                 # Extract processing frequency from plugin parameters if available
                 plugins = self.my_config["plugins"]
                 for plugin in plugins:
-                    if plugin.get('id') == 'rococo_handkeypoint_processor' or plugin.get('_target_', '').endswith('RococoHandKeypointProcessor'):
+                    if plugin.get('id') == 'vr_handkeypoint_processor':
                         plugin_params = plugin.get('params', {})
                         self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
                         self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
@@ -346,9 +345,9 @@ class RococoHandKeypointProcessor(DataProcessorBase):
 
     def urgent_stop(self):
         """Emergency stop implementation"""
-        self.get_logger().warn("URGENT STOP triggered for RococoHandKeypointProcessor")
+        self.get_logger().warn("URGENT STOP triggered for VRHandKeypointProcessor")
 
         # self.stop_component()
         self.set_state("disconnected")
         
-        self.get_logger().info("RococoHandKeypointProcessor emergency stopped successfully")
+        self.get_logger().info("VRHandKeypointProcessor emergency stopped successfully")

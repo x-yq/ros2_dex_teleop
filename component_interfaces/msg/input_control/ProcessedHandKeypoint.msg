@@ -1,9 +1,5 @@
 std_msgs/Header header
-string send_id
-geometry_msgs/Pose[] thumb_joints
-geometry_msgs/Pose[] index_joints
-geometry_msgs/Pose[] middle_joints
-geometry_msgs/Pose[] ring_joints
-geometry_msgs/Pose[] pinky_joints
-geometry_msgs/Pose wrist
-string[] joint_names
+string send_id 
+string data_type
+float64[] hand_coords
+float64[] hand_frame
