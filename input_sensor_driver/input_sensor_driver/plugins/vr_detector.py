@@ -28,6 +28,7 @@ class VRDetectorDriver(SensorDriverBase):
         self.raw_keypoint_left_socket = None
         self.raw_keypoint_right_socket = None
         self.button_feedback = None
+        self.execution_platform_ip = '192.168.178.54'
         self.left_hand_port = 8110
         self.right_hand_port = 8087
         self.button_port = 8095

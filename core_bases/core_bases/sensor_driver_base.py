@@ -71,18 +71,18 @@ class SensorDriverBase(ComponentNode, ABC):
         """
         pass
 
-    @abstractmethod
-    def get_data_from_sensor(self, sensor_id: str) -> Any:
-        """
-        Get data from a specific sensor.
+    # @abstractmethod
+    # def get_data_from_sensor(self, sensor_id: str) -> Any:
+    #     """
+    #     Get data from a specific sensor.
         
-        Args:
-            sensor_id: Identifier of the sensor
+    #     Args:
+    #         sensor_id: Identifier of the sensor
             
-        Returns:
-            Any: Sensor data in appropriate format
-        """
-        pass
+    #     Returns:
+    #         Any: Sensor data in appropriate format
+    #     """
+    #     pass
 
     @abstractmethod
     def stream(self):

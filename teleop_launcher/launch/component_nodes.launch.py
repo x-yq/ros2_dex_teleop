@@ -114,7 +114,7 @@ def generate_launch_description():
         DeclareLaunchArgument("ros_domain_id", default_value="0", description="ROS 2 Domain ID"),
         DeclareLaunchArgument("config_folder_path", default_value="/root/dev_ws/src/config_files"),
         
-        DeclareLaunchArgument("input_sensor_driver", default_value="input_sensor_driver_rococo"),
+        DeclareLaunchArgument("input_sensor_driver", default_value="input_sensor_driver_vr"),
         DeclareLaunchArgument("input_control_data_processor", default_value="input_control_data_processor"),
         DeclareLaunchArgument("motion_retarget", default_value="motion_retarget"),
         DeclareLaunchArgument("robot_driver", default_value="robot_driver"),
