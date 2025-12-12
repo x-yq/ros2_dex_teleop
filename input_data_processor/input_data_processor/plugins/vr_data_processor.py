@@ -147,8 +147,8 @@ class VRHandKeypointProcessor(DataProcessorBase):
         processed_msg.header = msg.header
         processed_msg.header.stamp = self.get_clock().now().to_msg()
         processed_msg.data_type = data_type
-        processed_msg.hand_coords = self.averaged_hand_coords
-        processed_msg.hand_frame = self.averaged_hand_frame
+        processed_msg.hand_coords = self.averaged_hand_coords.flatten().tolist()
+        processed_msg.hand_frame = np.array(self.averaged_hand_frame).flatten().tolist()
 
         self.publish_msg("right_hand_keypoint_processed", processed_msg)
 

@@ -109,9 +109,14 @@ class PlotHand2D():
 
         # Render figure to numpy array
         self.canvas.draw()
-        buf = np.frombuffer(self.canvas.tostring_rgb(), dtype=np.uint8)
+        
+        # Use the modern method instead of deprecated tostring_rgb()
+        buf = np.frombuffer(self.canvas.buffer_rgba(), dtype=np.uint8)
         w, h = self.fig.canvas.get_width_height()
-        img = buf.reshape(h, w, 3)   # RGB image
+        img = buf.reshape(h, w, 4)   # RGBA image
+        
+        # Convert RGBA to RGB by removing alpha channel
+        img = img[:, :, :3]
 
         return img
     
@@ -243,7 +248,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         # if self.state!='running':
         #     return
         self.latest_hand_keypoints = msg
-        self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
+        self.get_logger().debug(f"Received processed hand keypoints with joints")
         
         # Process hand data for 2D plotting
         if "hand_2d_plot" in self.processing_types:

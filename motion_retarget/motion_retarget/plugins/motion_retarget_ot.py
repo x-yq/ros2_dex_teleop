@@ -104,7 +104,7 @@ class MotionRetargetOT(MotionRetargetBase):
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
 
-        self.get_logger().debug(f"Received processed hand keypoints with {len(msg.joint_names)} joints")
+        self.get_logger().debug(f"Received processed hand keypoints with joints")
 
         self.pong_reply("right_hand_keypoint_processed", msg)
         

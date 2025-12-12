@@ -6,7 +6,7 @@ topics:
     msg_type: component_interfaces/msg/RawHandKeypoint
     publish_freq: 90 # in hz
     frame_id: vr # must be one of the frame ids defined in the calibration.yaml
-    publisher: input_sensor_driver_vr  ## must be layer_cn_id
+    publisher: feedback_projector_driver  ## must be layer_cn_id
     subscribers: [input_control_data_processor] # could be multi subscribers
     dtype: float32 # for data collection based on robo-dm
   

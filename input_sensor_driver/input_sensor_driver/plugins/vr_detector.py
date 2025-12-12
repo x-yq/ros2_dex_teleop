@@ -21,7 +21,7 @@ class VRDetectorDriver(SensorDriverBase):
         super().__init__(layer_cn_id, ros2_domain_id)
         
         # Driver specific attributes
-        self.freq = 1  # Default frequency
+        self.freq = 120  # Default frequency
         self.sensor_active = False
         self.vr_connection_status = False
 
@@ -34,14 +34,12 @@ class VRDetectorDriver(SensorDriverBase):
         self.button_port = 8095
 
         self._load_my_config()
+        # self._register_zmq_sub()
         self.get_logger().warn(f"simulated latency: {self.simulate_latency}")
         if self.simulate_latency > 0:
             self._setup_latency_simulation()
 
         self.start_sensor('vr_detector')
-        
-        self._register_zmq_sub()
-
 
     def _load_my_config(self):
         """Load driver-specific configuration using component_node config methods"""
@@ -58,7 +56,7 @@ class VRDetectorDriver(SensorDriverBase):
                         self.right_hand_port = plugin_params.get("right_hand_port", self.right_hand_port)
                         self.button_port = plugin_params.get("button_port", self.button_port)
 
-                        self.freq = plugin_params.get("freq", self.freq)
+                        # self.freq = plugin_params.get("freq", self.freq)
                         self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
                         self.get_logger().info(f"Loaded VRDriver config: {self.freq}Hz")
                         break
@@ -97,10 +95,10 @@ class VRDetectorDriver(SensorDriverBase):
             self.handle_error("Error during pub/sub registration: ", e)
 
     def _register_zmq_sub(self):
-
-        self.raw_keypoint_left_socket = self.create_pull_socket(self.execution_platform_ip, self.left_hand_port)
-        self.raw_keypoint_right_socket = self.create_pull_socket(self.execution_platform_ip, self.right_hand_port)
-        self.button_keypoint_socket = self.create_pull_socket(self.execution_platform_ip, self.button_port)
+        self.get_logger().warn('Registering zmq sub for vr detector!!!')
+        # self.raw_keypoint_left_socket = self.create_pull_socket(self.execution_platform_ip, self.left_hand_port)
+        # self.raw_keypoint_right_socket = self.create_pull_socket(self.execution_platform_ip, self.right_hand_port)
+        # self.button_keypoint_socket = self.create_pull_socket(self.execution_platform_ip, self.button_port)
 
     def start_sensor(self, sensor_id: str) -> bool:
         """Start the VR glove sensor."""
@@ -218,11 +216,11 @@ class VRDetectorDriver(SensorDriverBase):
                 t.destroy()
             self.compo_timers.clear()
 
-        # Calculate timer period from frequency
-        timer_period = 1.0 / self.freq
-        timer = self.create_timer(timer_period, self.stream)
-        self.logging(f"Registered timer at {self.freq}Hz", "INFO")
-        self.compo_timers.append(timer)
+        # # Calculate timer period from frequency
+        # timer_period = 1.0 / self.freq
+        # timer = self.create_timer(timer_period, self.stream)
+        # self.logging(f"Registered timer at {self.freq}Hz", "INFO")
+        # self.compo_timers.append(timer)
 
     
     def start_component(self):
