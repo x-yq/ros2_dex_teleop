@@ -53,14 +53,14 @@ class VRDriver(FeedbackProjectorDriverBase):
         # Additional attributes for this specific driver
         self.width = 1280
         self.height = 720
-        self.execution_platform_ip = '192.168.178.54'
+        self.execution_platform_ip = '192.168.64.3' #'192.168.178.54'
         self.vr_cam_port = 10505
         self.vr_graph_port = 15001
         self.left_hand_port = 8110
         self.right_hand_port = 8087
         self.button_port = 8095
 
-        self.freq = 120
+        self.freq = 90
         
         # Store latest received data
         self.latest_scene_image = None
@@ -76,7 +76,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         self.button_feedback = None
 
         self._load_my_config()
-        self._register_zmq_sub()
+        # self._register_zmq_sub()
         self._register_zmq_pub()   
 
     def _load_my_config(self):
@@ -109,12 +109,12 @@ class VRDriver(FeedbackProjectorDriverBase):
 
     def _register_zmq_pub(self):
         
-        # if self.rgb_viz_zmq_publisher:
-        #     self.rgb_viz_zmq_publisher.stop()
-        # self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
-        #     host = self.execution_platform_ip,
-        #     port = self.vr_cam_port
-        # )
+        if self.rgb_viz_zmq_publisher:
+            self.rgb_viz_zmq_publisher.stop()
+        self.rgb_viz_zmq_publisher = ZMQCompressedImageTransmitter(
+            host = self.execution_platform_ip,
+            port = self.vr_cam_port
+        )
 
         self.hand_2d_zmq_publisher = ZMQCompressedImageTransmitter(
             host = self.execution_platform_ip,
@@ -148,12 +148,12 @@ class VRDriver(FeedbackProjectorDriverBase):
                 topic_id = topic_config["id"]
                 msg_type = topic_config["msg_type"]
 
-                # if self.layer_cn_id == topic_config.get("publisher", ''):
-                if msg_type == "component_interfaces/msg/RawHandKeypoint":
-                    self.compo_publishers[topic_id] = self.create_publisher(
-                            RawHandKeypoint, topic_id, 10
-                        )
-                    self.get_logger().info(f"Publisher registered: {topic_id}")
+                # # if self.layer_cn_id == topic_config.get("publisher", ''):
+                # if msg_type == "component_interfaces/msg/RawHandKeypoint":
+                #     self.compo_publishers[topic_id] = self.create_publisher(
+                #             RawHandKeypoint, topic_id, 10
+                #         )
+                #     self.get_logger().info(f"Publisher registered: {topic_id}")
                     
 
                 if self.layer_cn_id in topic_config.get("subscribers", []):
@@ -216,16 +216,16 @@ class VRDriver(FeedbackProjectorDriverBase):
 
         return msg
 
-    # def scene_image_callback(self, msg: Image):
-    #     """Callback for processed scene image data"""
+    def scene_image_callback(self, msg: Image):
+        """Callback for processed scene image data"""
         
-    #     img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-    #     self.latest_scene_image = self._rescale_image(img, 2)
-    #     self.rgb_viz_zmq_publisher.send_image(self._rescale_image(self.latest_scene_image, 1))
+        img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
+        self.latest_scene_image = self._rescale_image(img, 2)
+        # self.rgb_viz_zmq_publisher.send_image(self._rescale_image(self.latest_scene_image, 1))
 
-    #     self.raw_right_keypoints = self.raw_keypoint_right_socket.recv()
-    #     self.raw_left_keypoints = self.raw_keypoint_left_socket.recv()
-    #     self.button_feedback = self.button_keypoint_socket.recv()
+        # self.raw_right_keypoints = self.raw_keypoint_right_socket.recv()
+        # self.raw_left_keypoints = self.raw_keypoint_left_socket.recv()
+        # self.button_feedback = self.button_keypoint_socket.recv()
 
     def hand_plot_callback(self, msg: Hand2DPlotData):
         """Callback for hand 2D plot data"""      
@@ -258,21 +258,21 @@ class VRDriver(FeedbackProjectorDriverBase):
         # Create dummy hand plot data
         dummy_hand_plot = np.random.randint(0,255,(128,128,3), dtype=np.uint8)
 
-        raw_right_keypoints = self.raw_keypoint_right_socket.recv()
-        raw_left_keypoints = self.raw_keypoint_left_socket.recv()
-        button_feedback = self.button_keypoint_socket.recv()
-        if raw_right_keypoints is not None:
-            # Create and publish RawHandKeypoint message
-            raw_right_keypoints = self._extract_data_from_token(raw_right_keypoints)
-            handkeypoint_msg = self._create_raw_hand_keypoint_msg(raw_right_keypoints)
-            topic_id = 'right_hand_keypoint_raw'
-            self.publish_msg(topic_id, handkeypoint_msg)
+        # raw_right_keypoints = self.raw_keypoint_right_socket.recv()
+        # raw_left_keypoints = self.raw_keypoint_left_socket.recv()
+        # button_feedback = self.button_keypoint_socket.recv()
+        # if raw_right_keypoints is not None:
+        #     # Create and publish RawHandKeypoint message
+        #     raw_right_keypoints = self._extract_data_from_token(raw_right_keypoints)
+        #     handkeypoint_msg = self._create_raw_hand_keypoint_msg(raw_right_keypoints)
+        #     topic_id = 'right_hand_keypoint_raw'
+        #     self.publish_msg(topic_id, handkeypoint_msg)
         
-        # # Simulate some projection work
-        # if self.latest_scene_image is not None:
-        #     self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
-        # else:
-        #     self.rgb_viz_zmq_publisher.send_image(dummy_image)
+        # Simulate some projection work
+        if self.latest_scene_image is not None:
+            self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
+        else:
+            self.rgb_viz_zmq_publisher.send_image(dummy_image)
 
         # if self.latest_hand_plot_data is not None:
         #     self.hand_2d_zmq_publisher.send_image(self.latest_hand_plot_data) #TODO: change to self.latest_hand_plot_data
@@ -301,7 +301,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         self.latest_scene_image = None
         self.latest_hand_plot_data = None
 
-        # self.rgb_viz_zmq_publisher.stop()
+        self.rgb_viz_zmq_publisher.stop()
         self.hand_2d_zmq_publisher.stop()
 
         # self.stop_component()
