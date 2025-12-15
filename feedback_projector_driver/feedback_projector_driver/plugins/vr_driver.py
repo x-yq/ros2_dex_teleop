@@ -53,7 +53,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         # Additional attributes for this specific driver
         self.width = 1280
         self.height = 720
-        self.execution_platform_ip = '192.168.64.3' #'192.168.178.54'
+        self.execution_platform_ip = '192.168.178.54' #'192.168.64.3' #'192.168.178.54'
         self.vr_cam_port = 10505
         self.vr_graph_port = 15001
         self.left_hand_port = 8110
@@ -129,11 +129,11 @@ class VRDriver(FeedbackProjectorDriverBase):
         socket.bind('tcp://{}:{}'.format(host, port))
         return socket
 
-    def _register_zmq_sub(self):
-        self.get_logger().warn('Registering zmq sub for vr detector!!!')
-        self.raw_keypoint_left_socket = self.create_pull_socket(self.execution_platform_ip, self.left_hand_port)
-        self.raw_keypoint_right_socket = self.create_pull_socket(self.execution_platform_ip, self.right_hand_port)
-        self.button_keypoint_socket = self.create_pull_socket(self.execution_platform_ip, self.button_port)
+    # def _register_zmq_sub(self):
+    #     self.get_logger().warn('Registering zmq sub for vr detector!!!')
+    #     self.raw_keypoint_left_socket = self.create_pull_socket(self.execution_platform_ip, self.left_hand_port)
+    #     self.raw_keypoint_right_socket = self.create_pull_socket(self.execution_platform_ip, self.right_hand_port)
+    #     self.button_keypoint_socket = self.create_pull_socket(self.execution_platform_ip, self.button_port)
 
     def register_pub_sub(self):
         """Register subscribers based on data_stream configuration"""
@@ -159,12 +159,12 @@ class VRDriver(FeedbackProjectorDriverBase):
                 if self.layer_cn_id in topic_config.get("subscribers", []):
                     # Create subscription based on message type
                     if msg_type == "sensor_msgs/msg/Image":
-                        # self.compo_subscribers[topic_id] = self.create_subscription(
-                        #     Image,
-                        #     topic_id,
-                        #     self.scene_image_callback,
-                        #     10
-                        # )
+                        self.compo_subscribers[topic_id] = self.create_subscription(
+                            Image,
+                            topic_id,
+                            self.scene_image_callback,
+                            10
+                        )
                         self.get_logger().info(f"Subscribed to {topic_id}")
                         
                     elif msg_type == "component_interfaces/msg/Hand2DPlotData":
@@ -220,8 +220,8 @@ class VRDriver(FeedbackProjectorDriverBase):
         """Callback for processed scene image data"""
         
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        self.latest_scene_image = self._rescale_image(img, 2)
-        # self.rgb_viz_zmq_publisher.send_image(self._rescale_image(self.latest_scene_image, 1))
+        self.latest_scene_image = self._rescale_image(img, 4)
+        self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
 
         # self.raw_right_keypoints = self.raw_keypoint_right_socket.recv()
         # self.raw_left_keypoints = self.raw_keypoint_left_socket.recv()
@@ -268,11 +268,11 @@ class VRDriver(FeedbackProjectorDriverBase):
         #     topic_id = 'right_hand_keypoint_raw'
         #     self.publish_msg(topic_id, handkeypoint_msg)
         
-        # Simulate some projection work
-        if self.latest_scene_image is not None:
-            self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
-        else:
-            self.rgb_viz_zmq_publisher.send_image(dummy_image)
+        # # Simulate some projection work
+        # if self.latest_scene_image is not None:
+        #     self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
+        # else:
+        #     self.rgb_viz_zmq_publisher.send_image(dummy_image)
 
         # if self.latest_hand_plot_data is not None:
         #     self.hand_2d_zmq_publisher.send_image(self.latest_hand_plot_data) #TODO: change to self.latest_hand_plot_data
@@ -287,11 +287,11 @@ class VRDriver(FeedbackProjectorDriverBase):
                 t.destroy()
             self.compo_timers.clear()
 
-        # Calculate timer period from frequency
-        timer_period = 1.0 / self.freq
-        timer = self.create_timer(timer_period, self.periodic_projection)
-        self.logging(f"Registered timer at {self.freq}Hz", "INFO")
-        self.compo_timers.append(timer)
+        # # Calculate timer period from frequency
+        # timer_period = 1.0 / self.freq
+        # timer = self.create_timer(timer_period, self.periodic_projection)
+        # self.logging(f"Registered timer at {self.freq}Hz", "INFO")
+        # self.compo_timers.append(timer)
 
     def urgent_stop(self):
         """Emergency stop implementation"""
