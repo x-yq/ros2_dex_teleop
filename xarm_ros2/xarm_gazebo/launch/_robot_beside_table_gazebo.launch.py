@@ -70,6 +70,9 @@ def launch_setup(context, *args, **kwargs):
     moveit_config_package_name = 'xarm_moveit_config'
     xarm_type = '{}{}'.format(robot_type.perform(context), dof.perform(context) if robot_type.perform(context) in ('xarm', 'lite') else '')
     
+    gazebo_gui = LaunchConfiguration('gazebo_gui', default='true')
+
+
     if not moveit_config_dict:
         # ros2 control params
         ros2_control_params = generate_ros2_control_params_temp_file(
@@ -145,7 +148,7 @@ def launch_setup(context, *args, **kwargs):
         launch_arguments={
             'world': xarm_gazebo_world,
             'server_required': 'true',
-            'gui_required': 'true',
+            'gui_required': gazebo_gui,
         }.items(),
     )
 

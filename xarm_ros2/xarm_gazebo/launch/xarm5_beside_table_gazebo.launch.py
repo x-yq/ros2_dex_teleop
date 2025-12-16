@@ -34,6 +34,8 @@ def generate_launch_description():
     geometry_mesh_origin_rpy = LaunchConfiguration('geometry_mesh_origin_rpy', default='"0 0 0"')
     geometry_mesh_tcp_xyz = LaunchConfiguration('geometry_mesh_tcp_xyz', default='"0 0 0"')
     geometry_mesh_tcp_rpy = LaunchConfiguration('geometry_mesh_tcp_rpy', default='"0 0 0"')
+
+    gazebo_gui = LaunchConfiguration('gazebo_gui', default='false')
     
     # robot gazebo launch
     # xarm_gazebo/launch/_robot_beside_table_gazebo.launch.py
@@ -62,6 +64,7 @@ def generate_launch_description():
             'geometry_mesh_origin_rpy': geometry_mesh_origin_rpy,
             'geometry_mesh_tcp_xyz': geometry_mesh_tcp_xyz,
             'geometry_mesh_tcp_rpy': geometry_mesh_tcp_rpy,
+            'gazebo_gui': gazebo_gui,
         }.items(),
     )
 
