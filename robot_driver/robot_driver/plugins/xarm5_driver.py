@@ -279,7 +279,7 @@ class SimXArm5Driver(RobotDriverBase):
                 target_pose = cmd.pose
             
             # Ensure orientation is in quaternion
-            target_pose = self._ensure_quaternion(target_pose)
+            # target_pose = self._ensure_quaternion(target_pose)
             
             # Publish to cartesian motion controller
             pose_stamped = PoseStamped()

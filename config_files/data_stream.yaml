@@ -40,13 +40,14 @@ topics:
     subscribers: [robot_driver]
     dtype: float32
 
+  # done
   - id: robot_state
     latency_test_target: False
     msg_type: component_interfaces/msg/RobotState
     publish_freq: 90
     frame_id: xarm5_robot
     publisher: robot_driver
-    subscribers: [feedback_data_processor]
+    subscribers: [motion_retarget]
   
   - id: gripper_state
     latency_test_target: False
@@ -54,7 +55,7 @@ topics:
     publish_freq: 90
     frame_id: xarm5_robot
     publisher: robot_driver
-    subscribers: [feedback_data_processor]
+    subscribers: [motion_retarget]
 
   # done
   - id: /sim_camera/camera/image_raw 

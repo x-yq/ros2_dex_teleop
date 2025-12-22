@@ -9,16 +9,16 @@ from rclpy.subscription import Subscription
 # Import message types based on the interface definitions
 from component_interfaces.msg import (
     # SceneImage,
-    # RobotState,
+    RobotState,
     Hand2DPlotData,
     ProcessedHandKeypoint
 )
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
-from geometry_msgs.msg import Point, Pose
+from geometry_msgs.msg import Point, Pose, PoseStamped
 from sensor_msgs.msg import JointState
 from builtin_interfaces.msg import Time
-
+from tf2_ros import Buffer, TransformListener
 from cv_bridge import CvBridge
 
 import cv2
@@ -128,7 +128,9 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         self.processing_types = ["hand_2d_plot"]
         self.processing_counter = 0
         
-        self.bridge = CvBridge() 
+        self.bridge = CvBridge()
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
         
         # Store latest received data
         self.latest_hand_keypoints = None
@@ -199,15 +201,7 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                     #     )
                     #     self.get_logger().info(f"Subscribed to scene image: {topic_id}")
                     
-                    # elif msg_type == "component_interfaces/msg/RobotState":
-                    #     self.compo_subscribers[topic_id] = self.create_subscription(
-                    #         RobotState,
-                    #         topic_id,
-                    #         self.robot_state_callback,
-                    #         10
-                    #     )
-                    #     self.get_logger().info(f"Subscribed to robot state: {topic_id}")
-                
+
                 # Create publishers for topics where this node is the publisher
                 if topic_config.get("publisher") == self.layer_cn_id:
                     msg_type = topic_config["msg_type"]
@@ -228,9 +222,9 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
                         )
                         self.get_logger().info(f"Created publisher for hand 2D plot: {topic_id}")
                     
-                    # elif msg_type == "component_interfaces/msg/RobotState":
+                    # elif msg_type == "geometry_msgs/msg/PoseStamped":
                     #     self.compo_publishers[topic_id] = self.create_publisher(
-                    #         RobotState,
+                    #         PoseStamped,
                     #         topic_id,
                     #         10
                     #     )
@@ -265,20 +259,6 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
     #     # Process scene image
     #     if "scene_img" in self.processing_types:
     #         self.process_scene_image(msg)
-
-    # def robot_state_callback(self, msg: RobotState):
-    #     """Callback for robot state data"""
-
-    #     ##NOTE
-    #     # if self.state!='running':
-    #     #     return
-            
-    #     self.latest_robot_state = msg
-    #     self.get_logger().debug(f"Received robot state for {msg.robot_id}")
-        
-    #     # Process robot state for plotting
-    #     if "robot_state_plot" in self.processing_types:
-    #         self.process_robot_state(msg)
 
     def process_hand_data(self, hand_data: ProcessedHandKeypoint):
         """Process hand keypoints into 2D plot data"""
@@ -320,24 +300,6 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
     #     except Exception as e:
     #         self.handle_error(f"Error processing scene image: ", e)
 
-    # def process_robot_state(self, robot_data: RobotState):
-    #     """Process robot state for visualization"""
-    #     try:
-    #         self.processing_counter += 1
-    #         self.get_logger().debug(f"Processing robot state #{self.processing_counter}")
-            
-    #         # Create processed robot state
-    #         processed_state = self._generate_processed_robot_state(robot_data)
-            
-    #         # Publish processed data
-    #         self.publish_msg("robot_state_processed", processed_state)
-            
-    #         self.get_logger().debug("Robot state processing completed successfully")
-            
-    #     except Exception as e:
-    #         self.handle_error("Error processing robot state: ", e)
-
-
     # def _generate_processed_image(self, image_data: Image) -> SceneImage:
     #     """Generate processed scene image"""
     #     processed_msg = SceneImage()
@@ -348,18 +310,42 @@ class MultiFeedbackDataProcessor(DataProcessorBase):
         
     #     return processed_msg
 
-    # def _generate_processed_robot_state(self, robot_data: RobotState) -> RobotState:
-    #     """Generate processed robot state"""
-    #     processed_msg = RobotState()
-    #     processed_msg.header = robot_data.header
-    #     processed_msg.header.stamp = self.get_clock().now().to_msg()
-    #     processed_msg.robot_id = robot_data.robot_id
-    #     processed_msg.joint_names = robot_data.joint_names
-    #     processed_msg.joint_states = robot_data.joint_states
-    #     processed_msg.end_effector_pose = robot_data.end_effector_pose
+    def process_hand_pose(self):
+        """Generate processed robot state"""
+        try:
+            tf = self.tf_buffer.lookup_transform(
+                    target_frame='link_base',
+                    source_frame='link5',
+                    time=Time()  # latest
+                )
+
+            msg = PoseStamped()
+            msg.header.stamp = tf.header.stamp
+            msg.header.frame_id = 'link_base'
+
+            # position
+            msg.pose.position.x = tf.transform.translation.x
+            msg.pose.position.y = tf.transform.translation.y
+            msg.pose.position.z = tf.transform.translation.z
+
+            # orientation
+            msg.pose.orientation = tf.transform.rotation
+            
+            self.publish_msg("robot_state", msg)
         
-    #     # Add some dummy processing (e.g., calculate velocity, etc.)
-    #     return processed_msg
+        except Exception as ex:
+            self.get_logger().debug(f"TF unavailable: {ex}")
+
+    # def register_timer(self):
+    #     if self.compo_timers != []:
+    #         for t in self.compo_timers:
+    #             t.destroy()
+    #         self.compo_timers.clear()
+
+    #     # Calculate timer period from frequency
+    #     timer_period = 1.0
+    #     timer = self.create_timer(timer_period, self.process_hand_pose)
+    #     self.compo_timers.append(timer)
 
     def urgent_stop(self):
         """Emergency stop implementation"""

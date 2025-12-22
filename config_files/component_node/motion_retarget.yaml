@@ -18,6 +18,4 @@ plugins:
     priority: 1
     params: # for node with plugin initialization,
       freq: 120
-      relative: true # TEST: true for cartesian, false for joint
-      space: cartesian
-      orientation_mode: euler
+      use_filter: true
