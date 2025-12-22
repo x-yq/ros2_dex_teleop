@@ -220,7 +220,7 @@ class VRDriver(FeedbackProjectorDriverBase):
         """Callback for processed scene image data"""
         
         img = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        self.latest_scene_image = self._rescale_image(img, 4)
+        self.latest_scene_image = self._rescale_image(img, 1)
         self.rgb_viz_zmq_publisher.send_image(self.latest_scene_image)
 
         # self.raw_right_keypoints = self.raw_keypoint_right_socket.recv()

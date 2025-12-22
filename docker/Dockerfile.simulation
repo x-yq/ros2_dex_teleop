@@ -27,7 +27,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-gazebo-ros \
     ros-humble-gazebo-ros-pkgs \
     ros-humble-filters \
+    ros-humble-gazebo-ros2-control \
     ros-humble-ros2-control \
+    ros-humble-control-toolbox \
+    ros-humble-joint-state-broadcaster \
+    ros-humble-joint-trajectory-controller \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Initialize rosdep safely (ignore if already done)
@@ -43,8 +47,10 @@ RUN echo "Creating ROS workspace..." && \
 #     cd xarm_ros2 && \
 #     git pull && git submodule sync && git submodule update --init --remote
 
-COPY crisp_controllers ${WS_SRC}/crisp_controllers
+# COPY crisp_controllers ${WS_SRC}/crisp_controllers
 COPY xarm_ros2 ${WS_SRC}/xarm_ros2
+
+RUN cd ${WS_SRC} && git clone -b ros2 https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git
 
 # === Install dependencies ===
 RUN apt-get update && \
@@ -60,7 +66,7 @@ RUN if [ -d "/opt/ros/humble/install" ]; then \
     fi && \
     echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc && \
     cd ${WS} && \
-    colcon build && \
+    colcon build --packages-skip cartesian_controller_simulation cartesian_controller_tests && \
     echo "source ${WS}install/setup.bash" >> ~/.bashrc
 
 # === Final stage: set up runtime ===
