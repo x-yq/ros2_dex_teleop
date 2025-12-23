@@ -1,5 +1,5 @@
 import rclpy
-from .plugins.xarm5_driver import SimXArm5Driver
+from .plugins.xarm5_gazebo_driver import SimXArm5Driver
 from rclpy.executors import MultiThreadedExecutor
 import sys
 

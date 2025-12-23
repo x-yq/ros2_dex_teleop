@@ -211,7 +211,7 @@ def launch_setup(context, *args, **kwargs):
     controllers = [
         'joint_state_broadcaster',
         '{}{}_cartesian_motion_controller'.format(prefix.perform(context), xarm_type),
-        # '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
+        '{}{}_traj_controller'.format(prefix.perform(context), xarm_type),
         # 'cartesian_impedance_controller',
         # 'pose_broadcaster',
         # 'gravity_compensation',
@@ -225,14 +225,20 @@ def launch_setup(context, *args, **kwargs):
     controller_nodes = []
     if load_controller.perform(context) in ('True', 'true'):
         for controller in controllers:
+            arguments = [
+                controller,
+                '--controller-manager', f'{ros_namespace}/controller_manager',
+            ]
+
+            # Make xarm5_traj_controller inactive
+            if controller == 'xarm5_traj_controller':
+                arguments.append('--inactive')
+
             controller_nodes.append(Node(
                 package='controller_manager',
                 executable='spawner',
                 output='screen',
-                arguments=[
-                    controller,
-                    '--controller-manager', '{}/controller_manager'.format(ros_namespace),
-                ],
+                arguments=arguments,
                 parameters=[{'use_sim_time': True}],
             ))
 
