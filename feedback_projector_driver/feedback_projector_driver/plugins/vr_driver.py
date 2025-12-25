@@ -228,7 +228,8 @@ class VRDriver(FeedbackProjectorDriverBase):
         # self.button_feedback = self.button_keypoint_socket.recv()
 
     def hand_plot_callback(self, msg: Hand2DPlotData):
-        """Callback for hand 2D plot data"""      
+        """Callback for hand 2D plot data"""
+        self.pong_reply('handkeypoint_plot_2d',msg)      
         img = self.bridge.imgmsg_to_cv2(msg.plotter, desired_encoding='bgr8')
         self.latest_hand_plot_data = self._rescale_image(img, 4)
         self.hand_2d_zmq_publisher.send_image(self.latest_hand_plot_data) #TODO: change to self.latest_hand_plot_data

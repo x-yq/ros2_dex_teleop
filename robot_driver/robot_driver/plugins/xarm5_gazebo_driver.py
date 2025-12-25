@@ -1095,6 +1095,8 @@ class SimXArm5Driver(RobotDriverBase):
         Handles both joint and cartesian space control.
         """
         try:
+            self.pong_reply(topic_id, msg)
+
             self.logging(f"Received command on {topic_id}", "DEBUG")
             
             # Validate robot ID

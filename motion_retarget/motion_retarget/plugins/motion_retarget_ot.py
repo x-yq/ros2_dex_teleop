@@ -630,6 +630,7 @@ class MotionRetargetOT(DataProcessorBase):
     def hand_keypoint_callback(self, msg: ProcessedHandKeypoint):
         """Callback for processed hand keypoint data"""
         try:
+            self.pong_reply("right_hand_keypoint_processed", msg)
             self.get_logger().debug("Received hand keypoint data")
             
             # Extract hand coordinates (24 joints x 3 coordinates = 72 values)
@@ -674,8 +675,11 @@ class MotionRetargetOT(DataProcessorBase):
         """Callback for robot state updates"""
         try:
             if msg.robot_id == "xarm5":
+                self.pong_reply('robot_state',msg)
                 self.current_robot_pose = msg.end_effector_pose
                 self.get_logger().debug("Updated robot pose")
+            else:
+                self.pong_reply('gripper_state',msg)
         except Exception as e:
             self.handle_error(f"Error in robot_state_callback: ", e)
     

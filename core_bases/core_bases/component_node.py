@@ -532,7 +532,7 @@ class ComponentNode(Node, ABC):
             send_time = self.pending_ping_ids[topic_id].pop(send_id)
             rtt_ms = (recv_time - send_time) / 1e6
             size_bytes = len(serialize_message(msg))
-            self.logging(f"RTT = {rtt_ms/2.0:.3f} ms; Size = {size_bytes} bytes", f"LATENCY_{topic_id}")
+            self.logging(f"RTT = {rtt_ms/2.0:.3f} ms; Start Timestamp = {send_time/1e6} ms; Size = {size_bytes} bytes", f"LATENCY_{topic_id}")
             # self.get_logger().info(f"[Latency] Topic {topic_id} RTT = {rtt_ms:.3f} ms")
 
     # NOTE: API
