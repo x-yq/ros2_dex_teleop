@@ -39,17 +39,17 @@
 #           privileged: true
       
 platforms:
-  - hardware_id: mac_pc
+  - hardware_id: ubuntu
     containers:
       - name: teleop-system
         node_count: 3
 
-  - hardware_id: pi4-197
+  - hardware_id: ubuntu
     containers:
       - name: teleop-components
         node_count: 8
 
-  - hardware_id: x86_pc
+  - hardware_id: ubuntu
     containers:
       - name: simulator
         simulator_name: gazebo

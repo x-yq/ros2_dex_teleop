@@ -1418,7 +1418,7 @@ class SimXArm5Driver(RobotDriverBase):
         
         # Set header
         msg.header = Header()
-        msg.header.stamp = robot_state['timestamp']
+        msg.header.stamp = self.get_clock().now().to_msg() #robot_state['timestamp']
         msg.header.frame_id = "xarm5"
         
         # Set robot ID

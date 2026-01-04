@@ -2,7 +2,7 @@ topics:
 
  # done
   - id: right_hand_keypoint_raw # also topic name
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/RawHandKeypoint
     publish_freq: 90 # in hz
     frame_id: vr # must be one of the frame ids defined in the calibration.yaml
@@ -12,7 +12,7 @@ topics:
   
   # done
   - id: right_hand_keypoint_processed # also topic name
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/ProcessedHandKeypoint
     publish_freq: 90 # in hz
     frame_id: vr # must be one of the frame ids defined in the calibration.yaml
@@ -22,7 +22,7 @@ topics:
   
   # done
   - id: robot_control_cmd
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/ControlCmd
     publish_freq: 120
     frame_id: xarm5_robot
@@ -32,7 +32,7 @@ topics:
 
   # done
   - id: gripper_control_cmd 
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/ControlCmd
     publish_freq: 120
     frame_id: xarm5_robot
@@ -42,7 +42,7 @@ topics:
 
   # done
   - id: robot_state
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/RobotState
     publish_freq: 90
     frame_id: xarm5_robot
@@ -50,7 +50,7 @@ topics:
     subscribers: [motion_retarget]
   
   - id: gripper_state
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/RobotState
     publish_freq: 90
     frame_id: xarm5_robot
@@ -81,7 +81,7 @@ topics:
 
  # done
   - id: handkeypoint_plot_2d
-    latency_test_target: True
+    latency_test_target: False
     msg_type: component_interfaces/msg/Hand2DPlotData
     publish_freq: 60
     frame_id: vr
