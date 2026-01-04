@@ -5,6 +5,9 @@ import time
 import numpy as np
 
 import robodm
+import robodm
+import numpy as np
+import matplotlib.pyplot as plt
 
 def collect_data_from_dict(path):
     data_dict = {
@@ -74,7 +77,7 @@ def load_data(path):
     for k,v in data.items():
         print(f"{k} shape: {v.shape}")
         print("----------example------------")
-        print(v)
+        print(v[:2])
 
 def collect_data_with_initial_stream_test():
 
@@ -100,14 +103,100 @@ def collect_data_with_initial_stream_test():
         # Close the trajectory
     traj.close()
 
+TRAJ_PATH = "/root/dev_ws/data/demos/demo_003/demo_003.vla"
+
+FEATURE_CMD = "robot_control_cmd/pose"
+FEATURE_STATE = "robot_state/end_effector_pose"
+
+
+def load_feature(traj, feature_name):
+    """
+    Load timestamps and values for a single feature.
+    Returns:
+        t: (N,) timestamps starting from 0 (seconds)
+        xyz: (N, 3) translation
+    """
+    timestamps = []
+    values = []
+
+    for sample in traj.iter_feature(feature_name):
+        timestamps.append(sample.timestamp)
+        values.append(sample.value)
+
+    timestamps = np.asarray(timestamps, dtype=np.float64)
+    values = np.asarray(values)
+
+    # robodm timestamps are in milliseconds → convert to seconds
+    timestamps_sec = timestamps / 1e3
+
+    # normalize to start from 0
+    timestamps_sec -= timestamps_sec[0]
+
+    # translation = x, y, z
+    xyz = values[:, :3]
+
+    return timestamps_sec, xyz
+
+
+def main():
+    RESAMPLE_FREQ = 57.0
+    traj = robodm.Trajectory(path=TRAJ_PATH, mode="r")
+
+    # Load all data as numpy arrays
+    data = traj.load(return_type="numpy", desired_frequency=RESAMPLE_FREQ)
+
+    cmd = data[FEATURE_CMD]      # (N, 7)
+    state = data[FEATURE_STATE]  # (M, 7)
+
+    # Time axes (start from 0)
+    t_cmd = np.arange(cmd.shape[0]) / RESAMPLE_FREQ
+    t_state = np.arange(state.shape[0]) / RESAMPLE_FREQ
+
+    labels = ["x", "y", "z"]
+
+    for i in range(3):
+        plt.figure(figsize=(10, 4))
+
+        plt.plot(
+            t_cmd,
+            cmd[:, i],
+            label=f"{FEATURE_CMD} ({labels[i]})",
+            linewidth=2
+        )
+
+        plt.plot(
+            t_state,
+            state[:, i],
+            label=f"{FEATURE_STATE} ({labels[i]})",
+            linestyle="--",
+            linewidth=2
+        )
+
+        plt.xlabel("Time (s)")
+        plt.ylabel(f"Translation {labels[i]} (m)")
+        plt.title(f"Resampled Translation {labels[i]} @ {RESAMPLE_FREQ} Hz")
+        plt.legend()
+        plt.grid(True)
+
+        out_path = f"translation_{labels[i]}_{int(RESAMPLE_FREQ)}Hz.png"
+        plt.savefig(out_path, dpi=150, bbox_inches="tight")
+        plt.close()
+
+        print(f"Saved {out_path}")
+
+
+
 if __name__ == "__main__":
 
     # path = '/Users/x-yq/Desktop/MasterThesis/datasets/roboDm/data_collection/test_trajectory.vla'
     # path = os.path.join(path, "test_trajectory.vla")
-    path = '/root/dev_ws/data/demos/scene_02/scene_02.vla'
+    path = '/root/dev_ws/data/demos/demo_003/demo_003.vla'
 
     # collect_data_diff_freq(path)
     load_data(path)
+
+    main()
+    # collect_data_diff_freq('/root/dev_ws/data/demos/demo_001/demo_002.vla')
 
     # Clean up
     # os.remove(path)

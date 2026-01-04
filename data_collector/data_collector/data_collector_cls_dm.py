@@ -22,11 +22,14 @@ import robodm
 from cv_bridge import CvBridge
 import numpy as np
 import inspect
-from sensor_msgs.msg import Image, PointCloud2, LaserScan
+from sensor_msgs.msg import Image, PointCloud2, LaserScan, JointState
 from geometry_msgs.msg import Point, Pose, PoseStamped, Transform, Vector3, Quaternion
 from nav_msgs.msg import OccupancyGrid
 from robodm import FeatureType
 import time
+from collections import defaultdict
+from threading import Lock
+import h5py
 
 class DataCollector(ComponentNode):
     """Node responsible for collecting and recording demonstration data"""
@@ -41,7 +44,6 @@ class DataCollector(ComponentNode):
         self.demo_config = {}
         self.data_stream_config = {}
         self.trajectories = {}
-        self.trajectory = None
         self.registered_features = {}
 
         self.init_topics = []
@@ -52,7 +54,13 @@ class DataCollector(ComponentNode):
         self.active_collections = {}
         self.collection_subscribers = {}  # {demo_id: {topic_id: subscriber}}
         self.collection_log_files = {}    # {demo_id: {topic_id: file_handle}}
-        
+
+        # demo_id -> feature_name -> list[(timestamp_ns, value)]
+        self.data_buffer = {}
+
+        # demo_id -> Lock (only for buffer writes)
+        self.buffer_locks = {}
+
         # Default configuration
         self.demo_root_path = "/tmp/demos"
         self.supported_formats = ['hdf5', 'vla']
@@ -348,13 +356,15 @@ class DataCollector(ComponentNode):
             
             try:
                 # Create trajectory with write mode
-                self.trajectory = robodm.Trajectory(
+                trajectory = robodm.Trajectory(
                     path=trajectory_path, 
                     mode="w"
                 )
                 
                 # Store trajectory reference
-                self.trajectories[demo_id] = self.trajectory
+                self.trajectories[demo_id] = trajectory
+                self.data_buffer[demo_id] = defaultdict(list)
+                self.buffer_locks[demo_id] = Lock()
                 self.get_logger().info(f"Successfully created trajectory for {demo_id}")
                 
             except Exception as traj_error:
@@ -457,7 +467,7 @@ class DataCollector(ComponentNode):
 
             fields = msg_obj.get_fields_and_field_types()
             for field_name, field_type in fields.items():
-                if 'header' in field_name or 'send_id' in field_name or 'space' in field_name or 'joint_names' in field_name or 'timeout' in field_name or 'relative' in field_name or 'robot_id' in field_name or 'joint_states' in field_name:
+                if 'header' in field_name or 'send_id' in field_name or 'space' in field_name or 'joint_names' in field_name or 'timeout' in field_name or 'relative' in field_name or 'robot_id' in field_name:
                     continue
                 sub_feature_name = f"{prefix}/{field_name}" if prefix else field_name
 
@@ -529,10 +539,10 @@ class DataCollector(ComponentNode):
         
         if field_type_str in ['geometry_msgs/Point', 'geometry_msgs/Vector3', 
                             'geometry_msgs/Quaternion', 'geometry_msgs/Pose',
-                            'geometry_msgs/Transform', 'geometry_msgs/PoseStamped',
+                            'geometry_msgs/Transform', 'geometry_msgs/PoseStamped', 'sensor_msgs/JointState',
                             'geometry_msgs/msg/Point', 'geometry_msgs/msg/Vector3',
                             'geometry_msgs/msg/Quaternion', 'geometry_msgs/msg/Pose',
-                            'geometry_msgs/msg/Transform', 'geometry_msgs/msg/PoseStamped']:
+                            'geometry_msgs/msg/Transform', 'geometry_msgs/msg/PoseStamped', 'sensor_msgs/msg/JointState']:
             return True
         
         if field_type_str in ['nav_msgs/OccupancyGrid', 'nav_msgs/msg/OccupancyGrid']:
@@ -569,7 +579,7 @@ class DataCollector(ComponentNode):
             return True
 
         # Sensor message types
-        if isinstance(field_value, (Image, PointCloud2, LaserScan)):
+        if isinstance(field_value, (Image, PointCloud2, LaserScan, JointState)):
             return True
             
         # Geometry message types
@@ -600,39 +610,112 @@ class DataCollector(ComponentNode):
         # Default: not a leaf field
         return False
 
+    # def _create_topic_callback(self, demo_id, topic_id, msg_type_class, metadata):
+    #     """Create a dynamic callback for a specific topic with enhanced debugging"""
+    #     def topic_callback(msg):
+    #         try:
+    #             if demo_id not in self.active_collections:
+    #                 self.get_logger().debug(f"Demo {demo_id} not in active collections, skipping message")
+    #                 return
+                
+    #             # Get trajectory for this demo
+    #             trajectory = self.trajectories.get(demo_id)
+    #             if trajectory is None:
+    #                 self.get_logger().error(f"No trajectory found for demo {demo_id}")
+    #                 return
+
+    #             self.get_logger().debug(f"Processing message for topic {topic_id}")
+                
+    #             # Extract and add data for each registered feature
+    #             lock = self.trajectory_locks.get(demo_id)
+    #             if lock is None:
+    #                 return
+                
+    #             with lock:
+    #                 self._process_message_fields(demo_id, topic_id, msg, trajectory, prefix=topic_id)
+                
+    #             self.get_logger().debug(f"Successfully processed message for topic {topic_id}")
+                    
+    #         except Exception as e:
+    #             # Enhanced error logging with full traceback
+    #             error_info = {
+    #                 'demo_id': demo_id,
+    #                 'topic_id': topic_id,
+    #                 'msg_type': str(type(msg)),
+    #                 'error': str(e),
+    #                 'traceback': traceback.format_exc()
+    #             }
+    #             self.get_logger().error(f"Error in callback for {demo_id}/{topic_id}: {error_info}")
+                
+    #     return topic_callback
     def _create_topic_callback(self, demo_id, topic_id, msg_type_class, metadata):
-        """Create a dynamic callback for a specific topic with enhanced debugging"""
         def topic_callback(msg):
             try:
                 if demo_id not in self.active_collections:
-                    self.get_logger().debug(f"Demo {demo_id} not in active collections, skipping message")
-                    return
-                
-                # Get trajectory for this demo
-                trajectory = self.trajectories.get(demo_id)
-                if self.trajectory is None:
-                    self.get_logger().error(f"No trajectory found for demo {demo_id}")
                     return
 
-                self.get_logger().debug(f"Processing message for topic {topic_id}")
-                
-                # Extract and add data for each registered feature
-                self._process_message_fields(demo_id, topic_id, msg, trajectory, prefix=topic_id)
-                
-                self.get_logger().debug(f"Successfully processed message for topic {topic_id}")
-                    
-            except Exception as e:
-                # Enhanced error logging with full traceback
-                error_info = {
-                    'demo_id': demo_id,
-                    'topic_id': topic_id,
-                    'msg_type': str(type(msg)),
-                    'error': str(e),
-                    'traceback': traceback.format_exc()
-                }
-                self.get_logger().error(f"Error in callback for {demo_id}/{topic_id}: {error_info}")
-                
+                # Timestamp (ns)
+                if hasattr(msg, 'header') and hasattr(msg.header, 'stamp'):
+                    ts = msg.header.stamp
+                    timestamp_ns = ts.sec * 1_000_000_000 + ts.nanosec
+                else:
+                    now = self.get_clock().now()
+                    sec, nsec = now.seconds_nanoseconds()
+                    timestamp_ns = sec * 1_000_000_000 + nsec
+
+                registered = self.registered_features.get(demo_id, set())
+                buffer = self.data_buffer.get(demo_id)
+                lock = self.buffer_locks.get(demo_id)
+
+                if buffer is None or lock is None:
+                    return
+
+                with lock:
+                    for feature_name in registered:
+                        if not feature_name.startswith(topic_id):
+                            continue
+
+                        field_value = self._extract_field_value(
+                            feature_name, topic_id, msg
+                        )
+
+                        if self._is_empty_field(field_value):
+                            continue
+
+                        numpy_value = self._convert_field_to_numpy(
+                            feature_name, field_value
+                        )
+
+                        if self._is_empty_field(numpy_value):
+                            continue
+
+                        buffer[feature_name].append(
+                            (timestamp_ns, numpy_value)
+                        )
+
+            except Exception:
+                self.get_logger().error(
+                    f"Callback error [{demo_id}/{topic_id}]\n{traceback.format_exc()}"
+                )
+
         return topic_callback
+
+    def _extract_field_value(self, feature_name, topic_prefix, msg):
+        attr_parts = feature_name.split("/")
+
+        prefix_parts = topic_prefix.split("/")
+        if attr_parts[:len(prefix_parts)] == prefix_parts:
+            attr_parts = attr_parts[len(prefix_parts):]
+
+        value = msg
+        for part in attr_parts:
+            if not part:
+                continue
+            if not hasattr(value, part):
+                return None
+            value = getattr(value, part)
+
+        return value
 
     def _process_message_fields(self, demo_id, topic_id, msg_obj, trajectory, prefix=""):
         """
@@ -646,12 +729,12 @@ class DataCollector(ComponentNode):
             # Get timestamp from header if available
             if hasattr(msg_obj, 'header') and hasattr(msg_obj.header, 'stamp'):
                 ts = msg_obj.header.stamp
-                timestamp_ms = ts.sec * 1000 + ts.nanosec // 1_000_000
+                timestamp_ns = ts.sec * 1_000_000_000 + ts.nanosec
             else:
                 # Fallback to current time
                 now = self.get_clock().now()
                 sec, nsec = now.seconds_nanoseconds()
-                timestamp_ms = sec * 1000 + nsec // 1_000_000
+                timestamp_ns = sec * 1_000_000_000 + nsec
 
             for feature_name in registered:
                 # Skip fields not under this topic/prefix
@@ -702,7 +785,7 @@ class DataCollector(ComponentNode):
                     # Convert to numpy and add to trajectory
                     if numpy_data is not None:
                         try:
-                            self.trajectory.add(feature_name, numpy_data) #, timestamp=timestamp_ms)
+                            trajectory.add(feature_name, numpy_data, timestamp=timestamp_ns, time_unit='ns')
                         except Exception as e:
                             self.get_logger().error(
                                 f"Failed to add {feature_name} to trajectory: {e}"
@@ -721,180 +804,398 @@ class DataCollector(ComponentNode):
             self.get_logger().error(f"Traceback: {traceback.format_exc()}")
             raise
 
+    # def _is_empty_field(self, value) -> bool:
+    #     """Return True if value should be considered empty and skipped."""
+    #     if value is None:
+    #         return True
+
+    #     # Empty string
+    #     if isinstance(value, str) and value == "":
+    #         return True
+
+    #     # Empty containers
+    #     if isinstance(value, (list, tuple, dict)) and len(value) == 0:
+    #         return True
+
+    #     # Empty numpy array
+    #     try:
+    #         import numpy as np
+    #         if isinstance(value, np.ndarray) and value.size == 0:
+    #             return True
+    #     except Exception:
+    #         pass
+
+    #     return False
+
     def _is_empty_field(self, value) -> bool:
         """Return True if value should be considered empty and skipped."""
+        
+        # None values
         if value is None:
             return True
-
-        # Empty string
-        if isinstance(value, str) and value == "":
+        
+        # Empty strings
+        if isinstance(value, str) and not value:
             return True
-
-        # Empty containers
-        if isinstance(value, (list, tuple, dict)) and len(value) == 0:
+        
+        # Empty lists/tuples
+        if isinstance(value, (list, tuple)) and len(value) == 0:
             return True
-
-        # Empty numpy array
-        try:
-            import numpy as np
-            if isinstance(value, np.ndarray) and value.size == 0:
+        
+        # Empty array.array (ROS2)
+        if hasattr(value, '__class__') and value.__class__.__name__ == 'array':
+            import array
+            if isinstance(value, array.array) and len(value) == 0:
                 return True
-        except Exception:
-            pass
-
+        
+        # Empty numpy arrays
+        if isinstance(value, np.ndarray) and value.size == 0:
+            return True
+        
+        # Check ROS2 JointState - empty if no joint names or positions
+        if hasattr(value, '__class__') and value.__class__.__name__ == 'JointState':
+            # if not hasattr(value, 'name') or len(value.name) == 0:
+            #     return True
+            if not hasattr(value, 'position') or len(value.position) == 0:
+                return True
+        
+        # Check geometry_msgs types - consider valid if they exist (even with zero values)
+        geometry_types = ['Pose', 'Point', 'Vector3', 'Quaternion', 'Transform', 'PoseStamped']
+        if hasattr(value, '__class__') and value.__class__.__name__ in geometry_types:
+            return False  # Geometry messages with zero values are still valid
+        
+        # Check Image messages - empty if no data
+        if isinstance(value, Image):
+            if not hasattr(value, 'data') or len(value.data) == 0:
+                return True
+            if value.width == 0 or value.height == 0:
+                return True
+        
+        # Check PointCloud2 - empty if no data
+        if isinstance(value, PointCloud2):
+            if not hasattr(value, 'data') or len(value.data) == 0:
+                return True
+        
+        # Check LaserScan - empty if no ranges
+        if isinstance(value, LaserScan):
+            if not hasattr(value, 'ranges') or len(value.ranges) == 0:
+                return True
+        
+        # Check OccupancyGrid - empty if no data
+        if isinstance(value, OccupancyGrid):
+            if not hasattr(value, 'data') or len(value.data) == 0:
+                return True
+        
+        # All other values are considered non-empty
         return False
 
+
     def _convert_field_to_numpy(self, field_name, field_value):
-        """Convert ROS field to numpy array using ros2_numpy and type detection"""
+        """Convert ROS field to numpy array or appropriate format for robodm trajectory"""
         
         try:
-            # Handle None values
+            # Handle None
             if field_value is None:
-                self.get_logger().debug("Field value is None, skipping")
+                self.get_logger().debug(f"Field {field_name} is None")
                 return None
-
-            # Handle empty lists/arrays - return empty numpy array with appropriate dtype
-            if isinstance(field_value, (list, tuple)) and len(field_value) == 0:
-                self.get_logger().debug("Field is empty array, returning empty numpy array")
-                return np.array([], dtype=np.float32)  # Default to float32 for empty arrays
-
-            # Handle list/tuple of strings
-            if isinstance(field_value, (list, tuple)) and all(isinstance(v, str) for v in field_value):
-                return ";".join(field_value)
             
-            # Handle string types
+            # Handle basic Python types - convert to numpy
+            if isinstance(field_value, (int, float)):
+                return np.array([field_value], dtype=np.float32)
+            
+            if isinstance(field_value, bool):
+                return np.array([field_value], dtype=np.bool_)
+            
             if isinstance(field_value, str):
-                self.get_logger().debug("Field is string type")
+                return field_value  # Keep as string for robodm
+            
+            if isinstance(field_value, bytes):
+                return np.frombuffer(field_value, dtype=np.uint8)
+            
+            # Handle Time and Duration
+            if isinstance(field_value, (Time, Duration)):
+                return np.array([field_value.sec, field_value.nanosec], dtype=np.int64)
+            
+            # Handle JointState
+            if hasattr(field_value, '__class__') and field_value.__class__.__name__ == 'JointState':
+                # Only extract position data, drop velocity and effort
+                position_array = np.array(field_value.position, dtype=np.float64) if hasattr(field_value, 'position') and field_value.position else np.array([], dtype=np.float64)
+                
+                # Return only positions as a simple numpy array
+                return position_array
+            
+            # Handle Pose
+            if isinstance(field_value, Pose):
+                # Convert to 7-element array: [x, y, z, qx, qy, qz, qw]
+                return np.array([
+                    field_value.position.x,
+                    field_value.position.y,
+                    field_value.position.z,
+                    field_value.orientation.x,
+                    field_value.orientation.y,
+                    field_value.orientation.z,
+                    field_value.orientation.w
+                ], dtype=np.float64)
+            
+            # Handle PoseStamped
+            if isinstance(field_value, PoseStamped):
+                # Extract just the pose part
+                return np.array([
+                    field_value.pose.position.x,
+                    field_value.pose.position.y,
+                    field_value.pose.position.z,
+                    field_value.pose.orientation.x,
+                    field_value.pose.orientation.y,
+                    field_value.pose.orientation.z,
+                    field_value.pose.orientation.w
+                ], dtype=np.float64)
+            
+            # Handle Point
+            if isinstance(field_value, Point):
+                return np.array([field_value.x, field_value.y, field_value.z], dtype=np.float64)
+            
+            # Handle Vector3
+            if isinstance(field_value, Vector3):
+                return np.array([field_value.x, field_value.y, field_value.z], dtype=np.float64)
+            
+            # Handle Quaternion
+            if isinstance(field_value, Quaternion):
+                return np.array([field_value.x, field_value.y, field_value.z, field_value.w], dtype=np.float64)
+            
+            # Handle Transform
+            if isinstance(field_value, Transform):
+                # Convert to 7-element array: [tx, ty, tz, qx, qy, qz, qw]
+                return np.array([
+                    field_value.translation.x,
+                    field_value.translation.y,
+                    field_value.translation.z,
+                    field_value.rotation.x,
+                    field_value.rotation.y,
+                    field_value.rotation.z,
+                    field_value.rotation.w
+                ], dtype=np.float64)
+            
+            # Handle Image
+            if isinstance(field_value, Image):
+                try:
+                    # Use CV bridge to convert to numpy array
+                    if hasattr(self, 'cv_bridge'):
+                        # Determine encoding
+                        if field_value.encoding in ['rgb8', 'bgr8']:
+                            cv_image = self.cv_bridge.imgmsg_to_cv2(field_value, desired_encoding='rgb8')
+                        elif field_value.encoding in ['mono8', 'mono16']:
+                            cv_image = self.cv_bridge.imgmsg_to_cv2(field_value, desired_encoding='passthrough')
+                        else:
+                            cv_image = self.cv_bridge.imgmsg_to_cv2(field_value, desired_encoding='passthrough')
+                        
+                        return np.array(cv_image)
+                    else:
+                        # Fallback: reshape raw data
+                        img_array = np.frombuffer(field_value.data, dtype=np.uint8)
+                        if field_value.encoding == 'rgb8' or field_value.encoding == 'bgr8':
+                            return img_array.reshape((field_value.height, field_value.width, 3))
+                        elif field_value.encoding == 'mono8':
+                            return img_array.reshape((field_value.height, field_value.width))
+                        else:
+                            return img_array
+                except Exception as e:
+                    self.get_logger().error(f"Failed to convert Image: {e}")
+                    return None
+            
+            # Handle PointCloud2
+            if isinstance(field_value, PointCloud2):
+                # Return the raw data as numpy array
+                # For full parsing, you'd need ros2_numpy or similar
+                return np.frombuffer(field_value.data, dtype=np.uint8)
+            
+            # Handle LaserScan
+            if isinstance(field_value, LaserScan):
+                # Convert to a structured numpy array instead of dict
+                ranges = np.array(field_value.ranges, dtype=np.float32)
+                intensities = np.array(field_value.intensities, dtype=np.float32) if hasattr(field_value, 'intensities') and field_value.intensities else np.array([], dtype=np.float32)
+                
+                # Create metadata array: [angle_min, angle_max, angle_increment, range_min, range_max, num_ranges, num_intensities]
+                metadata = np.array([
+                    field_value.angle_min,
+                    field_value.angle_max,
+                    field_value.angle_increment,
+                    field_value.range_min,
+                    field_value.range_max,
+                    len(ranges),
+                    len(intensities)
+                ], dtype=np.float32)
+                
+                # Combine everything into a single array: [metadata..., ranges..., intensities...]
+                combined = np.concatenate([metadata, ranges, intensities])
+                return combined
+            
+            # Handle OccupancyGrid
+            if isinstance(field_value, OccupancyGrid):
+                # Convert grid data to 2D numpy array
+                width = field_value.info.width
+                height = field_value.info.height
+                grid_array = np.array(field_value.data, dtype=np.int8).reshape((height, width))
+                return grid_array
+            
+            # Handle array.array (ROS2 uses this for float32[], int32[], etc.)
+            if hasattr(field_value, '__class__') and field_value.__class__.__name__ == 'array':
+                import array
+                if isinstance(field_value, array.array):
+                    # Convert array.array to numpy array
+                    # array.array typecodes: 'f' = float, 'd' = double, 'i' = int, etc.
+                    if field_value.typecode == 'f':
+                        return np.array(field_value, dtype=np.float32)
+                    elif field_value.typecode == 'd':
+                        return np.array(field_value, dtype=np.float64)
+                    elif field_value.typecode in ['i', 'l']:
+                        return np.array(field_value, dtype=np.int32)
+                    elif field_value.typecode in ['I', 'L']:
+                        return np.array(field_value, dtype=np.uint32)
+                    elif field_value.typecode in ['h']:
+                        return np.array(field_value, dtype=np.int16)
+                    elif field_value.typecode in ['H']:
+                        return np.array(field_value, dtype=np.uint16)
+                    elif field_value.typecode in ['b']:
+                        return np.array(field_value, dtype=np.int8)
+                    elif field_value.typecode in ['B']:
+                        return np.array(field_value, dtype=np.uint8)
+                    else:
+                        # Default: try to convert to float32
+                        return np.array(field_value, dtype=np.float32)
+            
+            # Handle lists/tuples of basic types
+            if isinstance(field_value, (list, tuple)):
+                if not field_value:
+                    return None
+                
+                # Check if all elements are numbers
+                if all(isinstance(v, (int, float)) for v in field_value):
+                    return np.array(field_value, dtype=np.float32)
+                
+                # Check if all elements are Pose
+                if all(isinstance(v, Pose) for v in field_value):
+                    # Convert each pose to 7-element array and stack
+                    pose_arrays = []
+                    for pose in field_value:
+                        pose_arrays.append([
+                            pose.position.x, pose.position.y, pose.position.z,
+                            pose.orientation.x, pose.orientation.y, pose.orientation.z, pose.orientation.w
+                        ])
+                    return np.array(pose_arrays, dtype=np.float64)
+                
+                # Check if all elements are Point
+                if all(isinstance(v, Point) for v in field_value):
+                    point_arrays = [[p.x, p.y, p.z] for p in field_value]
+                    return np.array(point_arrays, dtype=np.float64)
+                
+                # Check if all elements are Vector3
+                if all(isinstance(v, Vector3) for v in field_value):
+                    vec_arrays = [[v.x, v.y, v.z] for v in field_value]
+                    return np.array(vec_arrays, dtype=np.float64)
+                
+                # Check if all elements are Quaternion
+                if all(isinstance(v, Quaternion) for v in field_value):
+                    quat_arrays = [[q.x, q.y, q.z, q.w] for q in field_value]
+                    return np.array(quat_arrays, dtype=np.float64)
+                
+                # Check if all elements are strings
+                if all(isinstance(v, str) for v in field_value):
+                    return list(field_value)  # Keep as list of strings
+                
+                # For mixed or unknown types, return as-is for pickling
+                return list(field_value)
+            
+            # Handle numpy arrays - return as-is
+            if isinstance(field_value, np.ndarray):
                 return field_value
             
-            # Handle basic numeric types
-            if isinstance(field_value, (int, float, bool, bytes)):
-                self.get_logger().debug(f"Field is basic numeric type: {type(field_value)}")
-                return np.array([field_value])
-            
-            # Handle numeric sequences (float32[], float64[], int[], etc.)
-            if isinstance(field_value, (list, tuple)):
-                if len(field_value) == 0:
-                    return np.array([], dtype=np.float32)
-
-                if all(isinstance(v, (int, float, bool)) for v in field_value):
-                    self.get_logger().debug(
-                        f"Field is numeric sequence with {len(field_value)} elements"
-                    )
-                    return np.asarray(field_value, dtype=np.float32)
-            
-            if isinstance(field_value, np.ndarray):
-                if field_value.size == 0:
-                    return np.array([], dtype=np.float32)
-                if field_value.dtype.kind not in ("f", "i", "u", "b"):
-                    return None
-                return field_value.astype(np.float32, copy=False)
-            
-            # Handle ROS messages
-            # Sensor messages
-            if isinstance(field_value, Image):
-                self.get_logger().debug("Processing Image message")
-                try:
-                    return rnp.numpify(field_value)
-                except Exception as e:
-                    self.get_logger().warn(f"Failed Image conversion: {e}")
-                    return None
-
-            if isinstance(field_value, PointCloud2):
-                self.get_logger().debug("Processing PointCloud2 message")
-                try:
-                    return rnp.numpify(field_value)
-                except Exception as e:
-                    self.get_logger().warn(f"Failed PointCloud2 conversion: {e}")
-                    return None
-
-            if isinstance(field_value, LaserScan):
-                self.get_logger().debug("Processing LaserScan message")
-                try:
-                    return rnp.numpify(field_value)
-                except Exception as e:
-                    self.get_logger().warn(f"Failed LaserScan conversion: {e}")
-                    return None
-            
-            # if isinstance(field_value, JointState):
-            #     self.get_logger().debug("Processing JointState message")
-            #     try:
-            #         return rnp.numpify(field_value)
-            #     except Exception as e:
-            #         self.get_logger().warn(f"Failed JointState conversion: {e}")
-            #         return None
-            
-            if isinstance(field_value, Point):
-                return np.array([field_value.x, field_value.y, field_value.z], dtype=np.float32)
-
-            if isinstance(field_value, Vector3):
-                return np.array([field_value.x, field_value.y, field_value.z], dtype=np.float32)
-
-            if isinstance(field_value, Quaternion):
-                return np.array(
-                    [field_value.x, field_value.y, field_value.z, field_value.w],
-                    dtype=np.float32
-                )
-
-            if isinstance(field_value, Pose):
-                return np.array(
-                    [
-                        field_value.position.x,
-                        field_value.position.y,
-                        field_value.position.z,
-                        field_value.orientation.x,
-                        field_value.orientation.y,
-                        field_value.orientation.z,
-                        field_value.orientation.w,
-                    ],
-                    dtype=np.float32,
-                )
-
-            if isinstance(field_value, Transform):
-                return np.array(
-                    [
-                        field_value.translation.x,
-                        field_value.translation.y,
-                        field_value.translation.z,
-                        field_value.rotation.x,
-                        field_value.rotation.y,
-                        field_value.rotation.z,
-                        field_value.rotation.w,
-                    ],
-                    dtype=np.float32,
-                )
-
-            # Sequence of geometry messages
-            if isinstance(field_value, (list, tuple)) and all(isinstance(v, geometry_types) for v in field_value):
-                self.get_logger().debug(f"Processing sequence of {type(field_value[0]).__name__}")
-                try:
-                    return np.stack([rnp.numpify(v) for v in field_value], axis=0)
-                except Exception as e:
-                    self.get_logger().warn(f"Failed sequence conversion: {e}")
-                    return None
-            
-            # OccupancyGrid
-            if isinstance(field_value, OccupancyGrid):
-                self.get_logger().debug("Processing OccupancyGrid message")
-                return rnp.numpify(field_value)
-            
-            # Time/Duration
-            if hasattr(field_value, 'sec') and hasattr(field_value, 'nanosec'):
-                self.get_logger().debug("Processing Time/Duration message")
-                return np.array([field_value.sec, field_value.nanosec])
-            
-            # Fallback: try ros2_numpy
-            try:
-                self.get_logger().debug(f"Trying ros2_numpy fallback for field: {field_name}")
-                return rnp.numpify(field_value)
-            except Exception as e:
-                self.get_logger().debug(f"ros2_numpy fallback failed: {e}")
-                return str(field_value)
+            # For any other type, try to return as-is (robodm will pickle it)
+            self.get_logger().debug(f"Returning field {field_name} as-is (type: {type(field_value)})")
+            return field_value
             
         except Exception as e:
-            self.get_logger().error(f"Critical error in _convert_field_to_numpy: {e}")
+            self.get_logger().error(f"Failed to convert field {field_name}: {e}")
             self.get_logger().error(f"Traceback: {traceback.format_exc()}")
             return None
+
+    def _save_buffer_to_hdf5(self, demo_id):
+        buffer = self.data_buffer.get(demo_id)
+        lock = self.buffer_locks.get(demo_id)
+
+        if buffer is None or lock is None:
+            return
+
+        # Save alongside trajectory
+        demo_root = self.demo_config[demo_id].get('demo_root_path', self.demo_root_path)
+        h5_path = os.path.join(demo_root,demo_id, f"{demo_id}_buffer.h5")
+
+        self.get_logger().info(f"Saving buffered data to HDF5: {h5_path}")
+
+        with lock, h5py.File(h5_path, "w") as h5f:
+            for feature_name, samples in buffer.items():
+                if not samples:
+                    continue
+
+                # sort by timestamp
+                samples.sort(key=lambda x: x[0])
+
+                timestamps = np.array(
+                    [ts for ts, _ in samples], dtype=np.int64
+                )
+
+                try:
+                    values = np.stack([v for _, v in samples])
+                except Exception:
+                    # fallback for variable-sized data
+                    values = np.array(
+                        [v for _, v in samples], dtype=object
+                    )
+
+                # split feature name into groups
+                group = h5f
+                for part in feature_name.split("/"):
+                    group = group.require_group(part)
+
+                group.create_dataset(
+                    "timestamps",
+                    data=timestamps,
+                    compression="gzip",
+                    compression_opts=4,
+                )
+
+                group.create_dataset(
+                    "data",
+                    data=values,
+                    compression="gzip",
+                    compression_opts=4,
+                )
+
+        self.get_logger().info(f"HDF5 buffer saved for {demo_id}")
+
+    def _flush_buffer_to_trajectory(self, demo_id):
+        trajectory = self.trajectories.get(demo_id)
+        buffer = self.data_buffer.get(demo_id)
+        lock = self.buffer_locks.get(demo_id)
+
+        if trajectory is None or buffer is None or lock is None:
+            return
+
+        self.get_logger().info(
+            f"Flushing buffered data to trajectory for {demo_id}"
+        )
+
+        with lock:
+            for feature_name, samples in buffer.items():
+                # samples: list[(timestamp_ns, value)]
+                samples.sort(key=lambda x: x[0])  # ensure monotonic
+
+                for ts_ns, value in samples:
+                    trajectory.add(
+                        feature_name,
+                        value,
+                        timestamp=ts_ns,
+                        time_unit="ns"
+                    )
 
     def _stop_topic_collection(self, demo_id):
         """Stop collecting data for a demo and cleanup resources"""
@@ -908,7 +1209,9 @@ class DataCollector(ComponentNode):
                         self.get_logger().debug(f"Destroyed subscriber for {topic_id}")
                 del self.collection_subscribers[demo_id]
 
-            time.sleep(1)
+            self._save_buffer_to_hdf5(demo_id)
+            self._flush_buffer_to_trajectory(demo_id)
+            
             
             # Clean up registered features
             if hasattr(self, 'registered_features') and demo_id in self.registered_features:
@@ -922,11 +1225,9 @@ class DataCollector(ComponentNode):
             if hasattr(self, 'trajectories') and demo_id in self.trajectories:
                 trajectory = self.trajectories[demo_id]
                 try:
-                    if self.trajectory:
-                        self.trajectory.close()
+                    if trajectory:
+                        trajectory.close()
                         self.get_logger().info(f"Trajectory saved for demo {demo_id}")
-                    del self.trajectories[demo_id]
-                    self.trajectory = None
                 except Exception as e:
                     self.get_logger().error(f"Failed to close trajectory for {demo_id}: {e}")
                 
