@@ -54,12 +54,12 @@ RUN echo "Creating ROS workspace..." && \
 
 # COPY crisp_controllers ${WS_SRC}/crisp_controllers
 COPY xarm_ros2 ${WS_SRC}/xarm_ros2
-COPY kpi_monitor ${WORKSPACE}/src/kpi_monitor
-COPY core_bases ${WORKSPACE}/src/core_bases
-COPY component_interfaces ${WORKSPACE}/src/component_interfaces
-COPY system_interfaces ${WORKSPACE}/src/system_interfaces
-COPY config_files ${WORKSPACE}/src/config_files
-COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
+COPY kpi_monitor ${WS_SRC}/kpi_monitor
+COPY core_bases ${WS_SRC}/core_bases
+COPY component_interfaces ${WS_SRC}/component_interfaces
+COPY system_interfaces ${WS_SRC}/system_interfaces
+COPY config_files ${WS_SRC}/config_files
+COPY teleop_launcher ${WS_SRC}/teleop_launcher
 
 
 RUN cd ${WS_SRC} && git clone -b ros2 https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git

@@ -40,7 +40,7 @@ def launch_setup(context, *args, **kwargs):
         print(f"Warning: Could not determine hardware_id, using default monitor name: {monitor_node_name}")
     
     # Check if monitor node already exists in the network
-    # monitor_exists = check_monitor_node_exists(monitor_node_name, ros_domain_id)
+    monitor_exists = check_monitor_node_exists(monitor_node_name, ros_domain_id)
     
     if not monitor_exists:
         print(f"Launching monitor node: {monitor_node_name}")

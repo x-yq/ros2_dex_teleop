@@ -113,6 +113,8 @@ services:
     tty: true
     environment:
       - DISPLAY=${DISPLAY}
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CONTAINER_NAME=simulator
       - XAUTHORITY=${HOME}/.Xauthority
       - ROS_DISTRO=humble
       - ROBOT=xarm5

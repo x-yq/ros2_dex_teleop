@@ -736,7 +736,7 @@ class SystemManager(Node):
                 super().get_logger().warn(msg)
             elif log_level == 'INFO':
                 super().get_logger().info(msg)
-            else:
+            elif log_level == 'DEBUG':
                 super().get_logger().debug(msg)
         except Exception as e:
             super().get_logger().error(f"Failed to write to log file {log_file}: {e}")
