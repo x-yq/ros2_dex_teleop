@@ -143,196 +143,389 @@ class DockerMonitor(KPIMonitorBase):
         timestamp = time.time()
         cpu_usage_total, pre_cpu_usage_total, system_cpu_usage, pre_system_cpu_usage, online_cpu_count = self.get_cpu_percent(container_id)
         mem_usage_total, cache = self.get_memory_usage(container_id)
-        size_rw, size_root = self.get_disk_usage(container_id)
-        monitor_stats = self.get_monitor_process_stats(container_id)
+        # size_rw, size_root = self.get_disk_usage(container_id)
+        # monitor_stats = self.get_monitor_process_stats(container_id)
 
         return {
             "timestamp": timestamp,
-            "container_id": container_id,
-            "container": {
-                "cpu_related": [cpu_usage_total, pre_cpu_usage_total, system_cpu_usage, pre_system_cpu_usage, online_cpu_count],
-                "memory_related": [mem_usage_total, cache],
-                "disk_related": [size_rw, size_root]
-            },
-            "monitor_processes": monitor_stats
+            # "container_id": container_id,
+            "cpu_related": [cpu_usage_total, pre_cpu_usage_total, system_cpu_usage, pre_system_cpu_usage, online_cpu_count],
+            "memory_related": [mem_usage_total, cache],
+            # "disk_related": [size_rw, size_root],
+            # "monitor_processes": monitor_stats
         }
 
     def start_monitor_srv_callback(self, request, response):
-        """Start monitoring the specified container."""
-        container_id = request.container_id
-        
-        try:
-            if container_id in self.active_container_ids:
-                self.get_logger().warn(f"Container {container_id} is already being monitored")
-                response.success = True
-                response.container_id = container_id
-                response.start_time = self.get_clock().now().to_msg()
-                return response
-            
-            self.get_logger().info(f"Starting monitor for container: {container_id}")
-            
-            # Initialize container monitoring
-            self._initialize_container_monitor(container_id)
-            
-            # Initialize metrics storage for this container
-            self.container_kpi_metrics[container_id] = []
-            
-            # Add to active containers
-            self.active_container_ids.add(container_id)
-            
-            # Create timer for collecting KPI metrics (every 1 second)
-            self.monitor_timers[container_id] = self.create_timer(
-                1.0, lambda cid=container_id: self.collect_kpi(cid)
-            )
-            
-            response.success = True
-            response.container_id = container_id
-            response.start_time = self.get_clock().now().to_msg()
-            
-            self.get_logger().info(f"Successfully started monitoring container {container_id}")
-            
-        except Exception as e:
-            self.handle_error(f"Failed to start monitoring for {container_id}: ", e)
-            response.success = False
-            response.container_id = container_id
-            
+        response.container_ids = []
+        response.results_file_paths = []
+        response.success = True
+
+        for container_id in request.container_ids:
+            try:
+                if container_id in self.active_container_ids:
+                    self.get_logger().warn(
+                        f"Container {container_id} is already being monitored"
+                    )
+                    continue
+
+                self.get_logger().info(
+                    f"Starting monitor for container: {container_id}"
+                )
+
+                # Initialize container + stats stream
+                self._initialize_container_monitor(container_id)
+
+                # Create metric storage
+                self.container_kpi_metrics[container_id] = []
+
+                # Timer per container
+                self.monitor_timers[container_id] = self.create_timer(
+                    1.0,
+                    lambda cid=container_id: self.collect_kpi(cid)
+                )
+
+                self.active_container_ids.add(container_id)
+
+                response.container_ids.append(container_id)
+                response.results_file_paths.append(
+                    f"/log/monitor_{container_id}.log"
+                )
+
+            except Exception as e:
+                self.handle_error(
+                    f"Failed to start monitoring for {container_id}: ", e
+                )
+                response.success = False
+
+        response.start_time = self.get_clock().now().to_msg()
         return response
+
+    # def start_monitor_srv_callback(self, request, response):
+    #     """Start monitoring the specified container."""
+    #     container_id = request.container_id
+        
+    #     try:
+    #         if container_id in self.active_container_ids:
+    #             self.get_logger().warn(f"Container {container_id} is already being monitored")
+    #             response.success = True
+    #             response.container_id = container_id
+    #             response.start_time = self.get_clock().now().to_msg()
+    #             return response
+            
+    #         self.get_logger().info(f"Starting monitor for container: {container_id}")
+            
+    #         # Initialize container monitoring
+    #         self._initialize_container_monitor(container_id)
+            
+    #         # Initialize metrics storage for this container
+    #         self.container_kpi_metrics[container_id] = []
+            
+    #         # Add to active containers
+    #         self.active_container_ids.add(container_id)
+            
+    #         # Create timer for collecting KPI metrics (every 1 second)
+    #         self.monitor_timers[container_id] = self.create_timer(
+    #             1.0, lambda cid=container_id: self.collect_kpi(cid)
+    #         )
+            
+    #         response.success = True
+    #         response.container_id = container_id
+    #         response.start_time = self.get_clock().now().to_msg()
+            
+    #         self.get_logger().info(f"Successfully started monitoring container {container_id}")
+            
+    #     except Exception as e:
+    #         self.handle_error(f"Failed to start monitoring for {container_id}: ", e)
+    #         response.success = False
+    #         response.container_id = container_id
+            
+    #     return response
 
     def stop_monitor_srv_callback(self, request, response):
-        """Stop monitoring and process/log the collected metrics for the specified container."""
-        container_id = request.container_id
-        
-        try:
-            if container_id not in self.active_container_ids:
-                self.get_logger().warn(f"Container {container_id} is not being monitored")
-                response.success = False
-                response.container_id = container_id
-                response.results_file_path = f"/log/monitor_{self.layer_cn_id}.log"
-                return response
-                
-            self.get_logger().info(f"Stopping monitor for container: {container_id}")
-            
-            # Stop the timer for this container
-            if container_id in self.monitor_timers:
-                self.monitor_timers[container_id].destroy()
-                del self.monitor_timers[container_id]
-            
-            # Process and log the collected metrics for this container
-            if container_id in self.container_kpi_metrics and self.container_kpi_metrics[container_id]:
+        response.container_ids = []
+        response.results_file_paths = []
+        response.success = True
+
+        for container_id in request.container_ids:
+            try:
+                if container_id not in self.active_container_ids:
+                    self.get_logger().warn(
+                        f"Container {container_id} is not being monitored"
+                    )
+                    continue
+
+                self.get_logger().info(
+                    f"Stopping monitor for container: {container_id}"
+                )
+
+                # Stop timer
+                if container_id in self.monitor_timers:
+                    self.monitor_timers[container_id].destroy()
+                    del self.monitor_timers[container_id]
+
+                # Process and log metrics (your existing logic)
                 self._process_and_log_metrics(container_id)
-            
-            # Clean up resources for this container
-            if container_id in self.stats_streams:
-                try:
-                    self.stats_streams[container_id].close()
-                except:
-                    pass
-                del self.stats_streams[container_id]
-            
-            # Remove from active containers and clean up
-            self.active_container_ids.discard(container_id)
-            if container_id in self.containers:
-                del self.containers[container_id]
-            if container_id in self.monitor_pids:
-                del self.monitor_pids[container_id]
-            if container_id in self.container_kpi_metrics:
+
+                # Cleanup
                 del self.container_kpi_metrics[container_id]
-            
-            response.success = True
-            response.container_id = container_id
-            response.results_file_path = f"log/monitor_{container_id}.log"
-            
-            self.get_logger().info(f"Successfully stopped monitoring container {container_id}")
-            
-        except Exception as e:
-            self.handle_error(f"Failed to stop monitoring for {container_id}: ", e)
-            response.success = False
-            
+                del self.monitor_pids[container_id]
+                del self.containers[container_id]
+                del self.stats_streams[container_id]
+                self.active_container_ids.remove(container_id)
+
+                response.container_ids.append(container_id)
+                response.results_file_paths.append(
+                    f"/log/monitor_{container_id}.log"
+                )
+
+            except Exception as e:
+                self.handle_error(
+                    f"Failed to stop monitoring for {container_id}: ", e
+                )
+                response.success = False
+
         return response
 
-    def _process_and_log_metrics(self, container_id):
-        """Process collected metrics, compute CPU percentages and log the data for specific container."""
-        try:
-            if container_id not in self.container_kpi_metrics or not self.container_kpi_metrics[container_id]:
-                return
+    # def stop_monitor_srv_callback(self, request, response):
+    #     """Stop monitoring and process/log the collected metrics for the specified container."""
+    #     container_id = request.container_id
+        
+    #     try:
+    #         if container_id not in self.active_container_ids:
+    #             self.get_logger().warn(f"Container {container_id} is not being monitored")
+    #             response.success = False
+    #             response.container_id = container_id
+    #             response.results_file_path = f"/log/monitor_{self.layer_cn_id}.log"
+    #             return response
                 
-            # Log header
-            header = f"Container: {container_id} ({self.get_container_name(container_id)})"
-            self.log_kpi(header)
+    #         self.get_logger().info(f"Stopping monitor for container: {container_id}")
             
-            # Process each metric and compute CPU percentage
-            for i, metric in enumerate(self.container_kpi_metrics[container_id]):
-                cpu_related = metric["container"]["cpu_related"]
-                memory_related = metric["container"]["memory_related"]
-                
-                # Extract raw CPU values
+    #         # Stop the timer for this container
+    #         if container_id in self.monitor_timers:
+    #             self.monitor_timers[container_id].destroy()
+    #             del self.monitor_timers[container_id]
+            
+    #         # Process and log the collected metrics for this container
+    #         if container_id in self.container_kpi_metrics and self.container_kpi_metrics[container_id]:
+    #             self._process_and_log_metrics(container_id)
+            
+    #         # Clean up resources for this container
+    #         if container_id in self.stats_streams:
+    #             try:
+    #                 self.stats_streams[container_id].close()
+    #             except:
+    #                 pass
+    #             del self.stats_streams[container_id]
+            
+    #         # Remove from active containers and clean up
+    #         self.active_container_ids.discard(container_id)
+    #         if container_id in self.containers:
+    #             del self.containers[container_id]
+    #         if container_id in self.monitor_pids:
+    #             del self.monitor_pids[container_id]
+    #         if container_id in self.container_kpi_metrics:
+    #             del self.container_kpi_metrics[container_id]
+            
+    #         response.success = True
+    #         response.container_id = container_id
+    #         response.results_file_path = f"log/monitor_{container_id}.log"
+            
+    #         self.get_logger().info(f"Successfully stopped monitoring container {container_id}")
+            
+    #     except Exception as e:
+    #         self.handle_error(f"Failed to stop monitoring for {container_id}: ", e)
+    #         response.success = False
+            
+    #     return response
+
+    def log_kpi(self, msg, cid):
+        """Log a single pre-formatted KPI line."""
+        if not isinstance(msg, str):
+            msg = str(msg)
+
+        self.get_logger().warn(msg)
+        self.logging(
+            msg,
+            log_level=f"MONITOR_{self.layer_cn_id}_{cid[:12]}"
+        )
+
+
+    def _process_and_log_metrics(self, container_id):
+        """Process collected metrics, compute CPU percentages, and log processed data in batch."""
+        try:
+            metrics = self.container_kpi_metrics.get(container_id)
+            if not metrics:
+                return
+
+            # -------- Header --------
+            header_line = (
+                f"container_id: {container_id}, "
+                f"container_name: {self.get_container_name(container_id)}"
+            )
+            self.log_kpi(header_line, container_id)
+
+            # -------- Process samples (build lines, do NOT log yet) --------
+            data_lines = []
+            processed_rows = []
+
+            # Column header (once)
+            data_lines.append(
+                "timestamp, cpu_percent, mem_total_mib, mem_process_mib, cache_mib"
+            )
+
+            for i, metric in enumerate(metrics):
+                cpu_related = metric["cpu_related"]
+                memory_related = metric["memory_related"]
+
+                # CPU raw values
                 cpu_usage_total = cpu_related[0]
                 pre_cpu_usage_total = cpu_related[1]
                 system_cpu_usage = cpu_related[2]
                 pre_system_cpu_usage = cpu_related[3]
                 online_cpu_count = cpu_related[4]
 
-                # TODO: Extract Monitor process values
-                
-                # Compute CPU percentage
-                cpu_percent = 0.0
+                # CPU %
                 try:
                     cpu_delta = cpu_usage_total - pre_cpu_usage_total
                     system_delta = system_cpu_usage - pre_system_cpu_usage
-                    if system_delta > 0 and cpu_delta > 0:
-                        cpu_percent = (cpu_delta / system_delta) * 100 * online_cpu_count
-                except Exception as e:
-                    self.get_logger().error(f"Error computing CPU % for container {container_id}, sample {i}: {e}")
-                
-                # Convert memory from bytes to MiB
-                memory_usage_mib = memory_related[0] / (1024 * 1024)
-                cache_mib = memory_related[1] / (1024 * 1024)
-                
-                # Create log message with timestamp, CPU percentage, and memory in MiB
-                timestamp = metric["timestamp"]
-                log_msg = f"Timestamp: {timestamp:.4f}, CPU: {cpu_percent:.2f}%, Memory: {memory_usage_mib:.2f} MiB, Cache: {cache_mib:.2f} MiB"
-                
-                # Log the processed data
-                self.log_kpi(log_msg)
-            
-            # Log summary
-            if len(self.container_kpi_metrics[container_id]) > 0:
-                # Compute averages for summary
-                total_cpu = 0
-                total_memory = 0
-                valid_samples = 0
-                
-                for metric in self.container_kpi_metrics[container_id]:
-                    cpu_related = metric["container"]["cpu_related"]
-                    memory_related = metric["container"]["memory_related"]
-                    
-                    cpu_usage_total = cpu_related[0]
-                    pre_cpu_usage_total = cpu_related[1]
-                    system_cpu_usage = cpu_related[2]
-                    pre_system_cpu_usage = cpu_related[3]
-                    online_cpu_count = cpu_related[4]
-                    
-                    try:
-                        cpu_delta = cpu_usage_total - pre_cpu_usage_total
-                        system_delta = system_cpu_usage - pre_system_cpu_usage
-                        if system_delta > 0 and cpu_delta > 0:
-                            cpu_percent = (cpu_delta / system_delta) * 100 * online_cpu_count
-                            total_cpu += cpu_percent
-                            total_memory += memory_related[0] / (1024 * 1024)  # Convert to MiB
-                            total_cache += memory_related[1] / (1024 * 1024)
-                            valid_samples += 1
-                    except:
+                    if system_delta <= 0 or cpu_delta <= 0:
                         continue
-                
-                if valid_samples > 0:
-                    avg_cpu = total_cpu / valid_samples
-                    avg_memory = total_memory / valid_samples
-                    avg_cache = total_cache / valid_samples
-                    summary_msg = f"Summary - Samples: {valid_samples}, Avg CPU: {avg_cpu:.2f}%, Avg Memory: {avg_memory:.2f} MiB, Avg Cache: {avg_cache:.2f} MiB"
-                    self.log_kpi(summary_msg)
-            
+                    cpu_percent = (cpu_delta / system_delta) * 100 * online_cpu_count
+                except Exception:
+                    continue
+
+                # Memory (bytes → MiB)
+                mem_total_mib = memory_related[0] / (1024 * 1024)
+                cache_mib = memory_related[1] / (1024 * 1024)
+                mem_process_mib = max(mem_total_mib - cache_mib, 0.0)
+
+                timestamp = metric["timestamp"]
+
+                processed_rows.append(
+                    (timestamp, cpu_percent, mem_total_mib, mem_process_mib, cache_mib)
+                )
+
+                # Format line (values only)
+                data_lines.append(
+                    f"{timestamp:.6f}, "
+                    f"{cpu_percent:.6f}, "
+                    f"{mem_total_mib:.6f}, "
+                    f"{mem_process_mib:.6f}, "
+                    f"{cache_mib:.6f}"
+                )
+
+            if not processed_rows:
+                return
+
+            # -------- Batched data log (ONE call) --------
+            self.log_kpi("\n".join(data_lines), container_id)
+
+            # -------- Summary --------
+            valid_samples = len(processed_rows)
+
+            total_cpu = sum(r[1] for r in processed_rows)
+            total_mem = sum(r[2] for r in processed_rows)
+            total_mem_process = sum(r[3] for r in processed_rows)
+            total_cache = sum(r[4] for r in processed_rows)
+
+            summary_line = (
+                f"samples: {valid_samples}, "
+                f"avg_cpu_percent: {total_cpu / valid_samples:.6f}, "
+                f"avg_mem_total_mib: {total_mem / valid_samples:.6f}, "
+                f"avg_mem_process_mib: {total_mem_process / valid_samples:.6f}, "
+                f"avg_cache_mib: {total_cache / valid_samples:.6f}"
+            )
+
+            self.log_kpi(summary_line, container_id)
+
         except Exception as e:
-            self.handle_error(f"Failed to process metrics for container {container_id}: ", e)
+            self.handle_error(
+                f"Failed to process metrics for container {container_id}: ", e
+            )
+
+    # def _process_and_log_metrics(self, container_id):
+    #     """Process collected metrics, compute CPU percentages and log the data for specific container."""
+    #     try:
+    #         if container_id not in self.container_kpi_metrics or not self.container_kpi_metrics[container_id]:
+    #             return
+                
+    #         # Log header
+    #         header = f"Container: {container_id} ({self.get_container_name(container_id)})"
+    #         self.log_kpi(header)
+            
+    #         # Process each metric and compute CPU percentage
+    #         for i, metric in enumerate(self.container_kpi_metrics[container_id]):
+    #             cpu_related = metric["container"]["cpu_related"]
+    #             memory_related = metric["container"]["memory_related"]
+                
+    #             # Extract raw CPU values
+    #             cpu_usage_total = cpu_related[0]
+    #             pre_cpu_usage_total = cpu_related[1]
+    #             system_cpu_usage = cpu_related[2]
+    #             pre_system_cpu_usage = cpu_related[3]
+    #             online_cpu_count = cpu_related[4]
+
+    #             # TODO: Extract Monitor process values
+                
+    #             # Compute CPU percentage
+    #             cpu_percent = 0.0
+    #             try:
+    #                 cpu_delta = cpu_usage_total - pre_cpu_usage_total
+    #                 system_delta = system_cpu_usage - pre_system_cpu_usage
+    #                 if system_delta > 0 and cpu_delta > 0:
+    #                     cpu_percent = (cpu_delta / system_delta) * 100 * online_cpu_count
+    #             except Exception as e:
+    #                 self.get_logger().error(f"Error computing CPU % for container {container_id}, sample {i}: {e}")
+                
+    #             # Convert memory from bytes to MiB
+    #             memory_usage_mib = memory_related[0] / (1024 * 1024)
+    #             cache_mib = memory_related[1] / (1024 * 1024)
+                
+    #             # Create log message with timestamp, CPU percentage, and memory in MiB
+    #             timestamp = metric["timestamp"]
+    #             log_msg = f"Timestamp: {timestamp:.4f}, CPU: {cpu_percent:.2f}%, Memory: {memory_usage_mib:.2f} MiB, Cache: {cache_mib:.2f} MiB"
+                
+    #             # Log the processed data
+    #             self.log_kpi(log_msg)
+            
+    #         # Log summary
+    #         if len(self.container_kpi_metrics[container_id]) > 0:
+    #             # Compute averages for summary
+    #             total_cpu = 0
+    #             total_memory = 0
+    #             valid_samples = 0
+                
+    #             for metric in self.container_kpi_metrics[container_id]:
+    #                 cpu_related = metric["container"]["cpu_related"]
+    #                 memory_related = metric["container"]["memory_related"]
+                    
+    #                 cpu_usage_total = cpu_related[0]
+    #                 pre_cpu_usage_total = cpu_related[1]
+    #                 system_cpu_usage = cpu_related[2]
+    #                 pre_system_cpu_usage = cpu_related[3]
+    #                 online_cpu_count = cpu_related[4]
+                    
+    #                 try:
+    #                     cpu_delta = cpu_usage_total - pre_cpu_usage_total
+    #                     system_delta = system_cpu_usage - pre_system_cpu_usage
+    #                     if system_delta > 0 and cpu_delta > 0:
+    #                         cpu_percent = (cpu_delta / system_delta) * 100 * online_cpu_count
+    #                         total_cpu += cpu_percent
+    #                         total_memory += memory_related[0] / (1024 * 1024)  # Convert to MiB
+    #                         total_cache += memory_related[1] / (1024 * 1024)
+    #                         valid_samples += 1
+    #                 except:
+    #                     continue
+                
+    #             if valid_samples > 0:
+    #                 avg_cpu = total_cpu / valid_samples
+    #                 avg_memory = total_memory / valid_samples
+    #                 avg_cache = total_cache / valid_samples
+    #                 summary_msg = f"Summary - Samples: {valid_samples}, Avg CPU: {avg_cpu:.2f}%, Avg Memory: {avg_memory:.2f} MiB, Avg Cache: {avg_cache:.2f} MiB"
+    #                 self.log_kpi(summary_msg)
+            
+    #     except Exception as e:
+    #         self.handle_error(f"Failed to process metrics for container {container_id}: ", e)
 
     def collect_kpi(self, container_id):
         """Collect KPI metrics for the specified container."""

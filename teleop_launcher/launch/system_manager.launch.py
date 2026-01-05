@@ -24,22 +24,23 @@ def launch_setup(context, *args, **kwargs):
     # current_launch_file = os.path.abspath(__file__)
     
     # Get hardware_id for this launch file
-    hardware_id = get_exec_platform_id(deployment_config_path)
+    hardware_id, container_name = get_exec_platform_id(deployment_config_path)
     
     nodes = []
     
     # Determine monitor node name
     if hardware_id:
         hardware_id = hardware_id.replace('-', '_')
-        print("hardware id!!!!!!!!!!", hardware_id)
-        monitor_node_name = f"monitor_{hardware_id}"
+        container_name = container_name.replace('-', '_')
+        print("hardware id and Container name", hardware_id, container_name)
+        monitor_node_name = f"monitor_{hardware_id}_{container_name}"
     else:
         # Fallback to default if hardware_id not found
-        monitor_node_name = "monitor_0"
+        monitor_node_name = "monitor_0_system"
         print(f"Warning: Could not determine hardware_id, using default monitor name: {monitor_node_name}")
     
     # Check if monitor node already exists in the network
-    monitor_exists = check_monitor_node_exists(monitor_node_name, ros_domain_id)
+    # monitor_exists = check_monitor_node_exists(monitor_node_name, ros_domain_id)
     
     if not monitor_exists:
         print(f"Launching monitor node: {monitor_node_name}")

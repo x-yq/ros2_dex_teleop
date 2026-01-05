@@ -1,7 +1,6 @@
-# Request
-string container_id
+string[] container_ids
 ---
-# Response
 bool success
-string container_id
-string results_file_path
+string[] container_ids
+builtin_interfaces/Time start_time
+string[] results_file_paths

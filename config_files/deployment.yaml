@@ -47,7 +47,12 @@ platforms:
   - hardware_id: ubuntu
     containers:
       - name: teleop-components
-        node_count: 8
+        node_count: 3
+
+  - hardware_id: ubuntu
+    containers:
+      - name: teleop-drivers
+        node_count: 4
 
   - hardware_id: ubuntu
     containers:

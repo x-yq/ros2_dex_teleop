@@ -41,10 +41,10 @@ def get_exec_platform_id(config_path, container_name=None):
                 # Handle both formats: dict with 'name' field or plain string
                 if isinstance(container, dict):
                     if container.get('name') == container_name:
-                        return hardware_id
+                        return hardware_id, container_name
                 elif isinstance(container, str):
                     if container == container_name:
-                        return hardware_id
+                        return hardware_id, container_name
         
         print(f"Warning: Container '{container_name}' not found in deployment config")
         return None

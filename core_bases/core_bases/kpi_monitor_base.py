@@ -61,42 +61,7 @@ class KPIMonitorBase(ComponentNode):
         Stop monitoring and return collected results.
         """
         pass
-
-    # ------------------------------------------------------------------
-    # Helper methods
-    # ------------------------------------------------------------------
-
-    # def log_kpi(self, msg):
-    #     """Use ComponentNode.logging to send KPI data to SystemManager with MONITOR log level."""
-    #     to_log = ''
-    #     for i in msg:
-    #         m = json.dumps(i)
-    #         to_log += m
-    #     self.get_logger().warn(to_log)
-    #     self.logging(to_log, log_level="MONITOR")
-
-    def log_kpi(self, msg):
-        """Use ComponentNode.logging to send KPI data to SystemManager with MONITOR log level."""
         
-        if isinstance(msg, str):
-            # If msg is already a string, log it directly
-            to_log = msg
-        elif isinstance(msg, (dict, list)):
-            # If msg is JSON-like (dict or list), use json.dumps
-            to_log = json.dumps(msg)
-        else:
-            # For other types (like the original list of dicts), process each item
-            to_log = ''
-            try:
-                for i in msg:
-                    m = json.dumps(i)
-                    to_log += m
-            except (TypeError, ValueError):
-                # If json.dumps fails, convert to string
-                to_log = str(msg)
-        
-        self.get_logger().warn(to_log)
-        self.logging(to_log, log_level=f"MONITOR_{self.layer_cn_id}")
     # ------------------------------------------------------------------
     # Required methods
     # ------------------------------------------------------------------

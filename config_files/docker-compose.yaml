@@ -63,8 +63,41 @@ services:
       bash -c "source /opt/ros/humble/setup.bash && tail -f /dev/null"
     restart: on-failure
 
+  teleop-drivers:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.drivers
+    container_name: teleop-drivers
+    environment:
+      - ROS_DOMAIN_ID=${ROS_DOMAIN_ID:-0}
+      - CONTAINER_NAME=teleop-drivers
+      - DISPLAY=${DISPLAY}
+      - XAUTHORITY=${HOME}/.Xauthority
+    network_mode: host
+    ipc: host
+    privileged: true
+    security_opt:
+      - seccomp:unconfined
+    cap_add:
+      - SYS_PTRACE
+    working_dir: /root
+    volumes:
+      - /tmp/argus_socket:/tmp/argus_socket
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /run/udev:/run/udev
+      - /dev:/dev
+      - ${HOME}/.Xauthority:${HOME}/.Xauthority
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
+    device_cgroup_rules:
+      - 'c *:* rmw'
+    command: >
+      bash -c "source /opt/ros/humble/setup.bash && tail -f /dev/null"
+    restart: on-failure
+
               #  ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}
               #  ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}
+              #  ros2 launch teleop_launcher driver_nodes.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}
+
 
   simulator:
     build:
@@ -100,3 +133,6 @@ services:
       - 'c *:* rmw'
     command: ["bash", "-c", "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && tail -f /dev/null"] # python3 /src/simulated_env_launcher.py"]
 
+
+              #  ros2 launch teleop_launcher simulation_monitor.launch.py ros_domain_id:=${ROS_DOMAIN_ID:-0}
+              #  ros2 launch xarm_gazebo_xxx

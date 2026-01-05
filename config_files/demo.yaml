@@ -3,8 +3,8 @@ demo_root_path: /root/dev_ws/data/demos
 description: "Grasping task with real hand and robot arm."
 topics:
   - robot_control_cmd
-  # - gripper_control_cmd
-  # - robot_state
-  # - gripper_state
+  - gripper_control_cmd
+  - robot_state
+  - gripper_state
 video_codec: libx265
 storage_format: vla

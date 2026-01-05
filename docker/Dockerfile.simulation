@@ -22,6 +22,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     python3-pip \
     python3-psutil \
+    docker.io \
     ros-humble-ros-gz \
     ros-humble-moveit \
     ros-humble-gazebo-ros \
@@ -33,6 +34,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ros-humble-joint-state-broadcaster \
     ros-humble-joint-trajectory-controller \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN pip3 install --no-cache-dir \
+    docker 
+
 
 # Initialize rosdep safely (ignore if already done)
 RUN rosdep init 2>/dev/null || true && rosdep update
@@ -54,6 +59,8 @@ COPY core_bases ${WORKSPACE}/src/core_bases
 COPY component_interfaces ${WORKSPACE}/src/component_interfaces
 COPY system_interfaces ${WORKSPACE}/src/system_interfaces
 COPY config_files ${WORKSPACE}/src/config_files
+COPY teleop_launcher ${WORKSPACE}/src/teleop_launcher
+
 
 RUN cd ${WS_SRC} && git clone -b ros2 https://github.com/fzi-forschungszentrum-informatik/cartesian_controllers.git
 
