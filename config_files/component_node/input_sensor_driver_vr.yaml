@@ -16,7 +16,7 @@ plugins:
   - id: vr_detector_driver
     priority: 1
     params: # for node with plugin initialization
-      freq: 60
+      freq: 90
       # simulate_latency: 100
       execution_platform_ip: 192.168.178.54 # 192.168.64.3 # 192.168.50.228
       left_hand_port: 8110

@@ -1,6 +1,6 @@
-demo_id: demo_004
-demo_root_path: /root/dev_ws/data/demos
-description: "Grasping task with real hand and robot arm."
+demo_id: HZ_90
+demo_root_path: /root/dev_ws/demos
+description: "Gazebo Xarm5 teleoperation with input data publish frequency 90HZ"
 topics:
   - robot_control_cmd
   - gripper_control_cmd

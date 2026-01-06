@@ -845,12 +845,12 @@ class DataCollector(ComponentNode):
         # Empty array.array (ROS2)
         if hasattr(value, '__class__') and value.__class__.__name__ == 'array':
             import array
-            if isinstance(value, array.array) and len(value) == 0:
-                return True
+            if isinstance(value, array.array): # and len(value) == 0:
+                return False #True
         
         # Empty numpy arrays
-        if isinstance(value, np.ndarray) and value.size == 0:
-            return True
+        if isinstance(value, np.ndarray): # and value.size == 0:
+            return False #True
         
         # Check ROS2 JointState - empty if no joint names or positions
         if hasattr(value, '__class__') and value.__class__.__name__ == 'JointState':
