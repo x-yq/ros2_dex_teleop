@@ -1,0 +1,16 @@
+{
+  "demo_id": "HZ_d2_60",
+  "topics": [
+    "robot_control_cmd",
+    "gripper_control_cmd",
+    "robot_state",
+    "gripper_state"
+  ],
+  "storage_format": "vla",
+  "video_codec": "libx265",
+  "start_time": 1767799510640618291,
+  "end_time": 1767799578210471763,
+  "duration_seconds": 67.569853472,
+  "created_by": "data_collector",
+  "finalized_at": "2026-01-07T15:26:19.989182"
+}
