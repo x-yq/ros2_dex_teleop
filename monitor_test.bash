@@ -91,3 +91,4 @@ sleep 1
 stop_monitor "/monitor_ubuntu_teleop_components" "${COMPONENTS_ID}"
 
 echo "✅ All monitors stopped. Done."
+
