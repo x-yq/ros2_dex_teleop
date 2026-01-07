@@ -103,7 +103,7 @@ class VRDetectorDriver(SensorDriverBase):
     def start_sensor(self, sensor_id: str) -> bool:
         """Start the VR glove sensor."""
         try:
-            self.logging(f"Starting VR sensor: {sensor_id}", "INFO")
+            # self.logging(f"Starting VR sensor: {sensor_id}", "INFO")
             
             # # Get sensor connection info
             # connection_info = self.get_sensor_ip_port(sensor_id)
@@ -116,7 +116,7 @@ class VRDetectorDriver(SensorDriverBase):
             self.vr_connection_status = True
             self.sensor_active = True
             
-            self.logging(f"VR sensor {sensor_id} started successfully", "INFO")
+            # self.logging(f"VR sensor {sensor_id} started successfully", "INFO")
             return True
             # else:
             #     self.handle_error(f"No connection info found for sensor: {sensor_id}")
@@ -129,12 +129,12 @@ class VRDetectorDriver(SensorDriverBase):
     def stop_sensor(self, sensor_id: str) -> bool:
         """Stop the VR glove sensor."""
         try:
-            self.logging(f"Stopping VR sensor: {sensor_id}", "INFO")
+            # self.logging(f"Stopping VR sensor: {sensor_id}", "INFO")
             
             self.sensor_active = False
             self.vr_connection_status = False
             
-            self.logging(f"VR sensor {sensor_id} stopped successfully", "INFO")
+            # self.logging(f"VR sensor {sensor_id} stopped successfully", "INFO")
             return True
             
         except Exception as e:
@@ -246,5 +246,5 @@ class VRDetectorDriver(SensorDriverBase):
         self.stop_sensor('vr_detector')
         self.set_state("disconnected")
         
-        self.logging("Emergency stop completed", "WARN")
+        # self.logging("Emergency stop completed", "WARN")
         
