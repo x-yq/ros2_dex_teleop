@@ -7,10 +7,10 @@ set -euo pipefail
 ############################
 
 # Container IDs (FULL IDs as required by your services)
-SIMULATOR_ID="dd11e2af62b1971335f7e774bdfccee5102459eb5b9ff13e1e3bc02b250942a5"
-SYSTEM_ID="a1c3dfc3e9ea80c92e1da3c3df153c4b32ba758c205a601bde170e874f1f5596"
-DRIVERS_ID="c4473d0928ff3f9dd1772537a5da80e2c6fc08f7beb7bb037b366bea542e3147"
-COMPONENTS_ID="57ad6baaa0e8e1c999c54bb1f8b2f93486fb736f17f28da6b540ff5fe11adc14"
+SIMULATOR_ID="f962a026f2e1049d7fc4770703f3f742ecde8c7c18e49e721d8755f8ceee2429"
+SYSTEM_ID="47baa4bd5388b59f4baddad9d2f17feff758c72135b270f24a75e229e7d4b737"
+DRIVERS_ID="752b16673b2d5f5119a36d7606b1879ed80eb0252a517bb6d1705eb0650083af"
+COMPONENTS_ID="9ddf97dba7eeac3827c9d4696453f9470aa7e3ed19e194f6631875a99e7fec96"
 
 ############################
 # Helper functions
