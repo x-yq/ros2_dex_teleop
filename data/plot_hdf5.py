@@ -132,21 +132,50 @@ def plot_robot_and_gripper_with_latency(h5_path, robot_latency_path, gripper_lat
         print(f"✗ Error loading robot command: {e}")
     
     # Robot RTT
-    robot_rtt, robot_ts = parse_latency_log(robot_latency_path)
-    if len(robot_rtt) > 0:
-        robot_time = (robot_ts - reference_time_ms) / 1000.0  # Convert to seconds
-        ax_robot_rtt.scatter(robot_time, robot_rtt, 
-                            label='Robot RTT', s=30, alpha=0.6, marker='o', 
-                            color='red', edgecolors='darkred', linewidth=0.5)
+    # robot_rtt, robot_ts = parse_latency_log(robot_latency_path)
+    # if len(robot_rtt) > 0:
+    #     robot_time = (robot_ts - reference_time_ms) / 1000.0  # Convert to seconds
+    #     ax_robot_rtt.scatter(robot_time, robot_rtt, 
+    #                         label='Robot RTT', s=30, alpha=0.6, marker='o', 
+    #                         color='red', edgecolors='darkred', linewidth=0.5)
         
-        # Add statistics text
-        stats_text = f"RTT: μ={robot_rtt.mean():.2f}ms, σ={robot_rtt.std():.2f}ms, max={robot_rtt.max():.2f}ms"
-        ax_robot.text(0.02, 0.98, stats_text, 
-                     transform=ax_robot.transAxes,
-                     verticalalignment='top',
-                     bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
-                     fontsize=9, family='monospace')
-    
+    #     # Add statistics text
+    #     stats_text = f"RTT: μ={robot_rtt.mean():.2f}ms, σ={robot_rtt.std():.2f}ms, max={robot_rtt.max():.2f}ms"
+    #     ax_robot.text(0.02, 0.98, stats_text, 
+    #                  transform=ax_robot.transAxes,
+    #                  verticalalignment='top',
+    #                  bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
+    #                  fontsize=9, family='monospace')
+    robot_rtt, robot_ts = parse_latency_log(robot_latency_path)
+
+    if len(robot_rtt) > 0:
+        robot_time = (robot_ts - reference_time_ms) / 1000.0  # seconds
+
+        # filter out robot_time < 0
+        valid_mask = robot_time >= 0
+        robot_time = robot_time[valid_mask]
+        robot_rtt = robot_rtt[valid_mask]
+
+        if len(robot_rtt) > 0:
+            ax_robot_rtt.scatter(
+                robot_time, robot_rtt,
+                label='Robot RTT', s=30, alpha=0.6, marker='o',
+                color='red', edgecolors='darkred', linewidth=0.5
+            )
+
+            stats_text = (
+                f"RTT: μ={robot_rtt.mean():.2f}ms, "
+                f"σ={robot_rtt.std():.2f}ms, "
+                f"max={robot_rtt.max():.2f}ms"
+            )
+
+            ax_robot.text(
+                0.02, 0.98, stats_text,
+                transform=ax_robot.transAxes,
+                verticalalignment='top',
+                bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.7),
+                fontsize=9, family='monospace'
+            )
     ax_robot.set_xlabel('Time (s)', fontsize=12)
     ax_robot.set_ylabel('Translation (m)', fontsize=12, color='black')
     ax_robot_rtt.set_ylabel('RTT (ms)', fontsize=12, color='red')
@@ -329,10 +358,10 @@ def inspect_hdf5_structure(h5_path):
 
 if __name__ == "__main__":
     # Configuration
-    h5_path = "/root/dev_ws/demos/HZ_30/HZ_30_buffer.h5"
-    demo_id = "HZ_30"
-    robot_latency_path = "/root/dev_ws/log/latency_30hz/LATENCY_robot_control_cmd.log"
-    gripper_latency_path = "/root/dev_ws/log/latency_30hz/LATENCY_gripper_control_cmd.log"
+    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_30_r2/HZ_d1_30_buffer.h5"
+    demo_id = "HZ_d1_30"
+    robot_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/latency_30hz_r2/LATENCY_robot_control_cmd.log"
+    gripper_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/latency_30hz_r2/LATENCY_gripper_control_cmd.log"
     
     # Inspect structure
     inspect_hdf5_structure(h5_path)
