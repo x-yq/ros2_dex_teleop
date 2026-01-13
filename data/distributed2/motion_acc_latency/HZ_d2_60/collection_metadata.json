@@ -8,9 +8,9 @@
   ],
   "storage_format": "vla",
   "video_codec": "libx265",
-  "start_time": 1767799510640618291,
-  "end_time": 1767799578210471763,
-  "duration_seconds": 67.569853472,
+  "start_time": 1768320859971867214,
+  "end_time": 1768320925802552996,
+  "duration_seconds": 65.830685782,
   "created_by": "data_collector",
-  "finalized_at": "2026-01-07T15:26:19.989182"
+  "finalized_at": "2026-01-13T16:15:28.372917"
 }

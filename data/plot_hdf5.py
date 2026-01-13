@@ -358,10 +358,10 @@ def inspect_hdf5_structure(h5_path):
 
 if __name__ == "__main__":
     # Configuration
-    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_30_r2/HZ_d1_30_buffer.h5"
-    demo_id = "HZ_d1_30"
-    robot_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/latency_30hz_r2/LATENCY_robot_control_cmd.log"
-    gripper_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/latency_30hz_r2/LATENCY_gripper_control_cmd.log"
+    h5_path = "/home/x-yq/teleop_dev/data/distributed2/motion_acc_latency/HZ_d2_60/HZ_d2_60_buffer.h5"
+    demo_id = "HZ_d2_60"
+    robot_latency_path = "/home/x-yq/teleop_dev/data/distributed2/motion_acc_latency/latency_60hz/LATENCY_robot_control_cmd.log"
+    gripper_latency_path = "/home/x-yq/teleop_dev/data/distributed2/motion_acc_latency/latency_60hz/LATENCY_gripper_control_cmd.log"
     
     # Inspect structure
     inspect_hdf5_structure(h5_path)
