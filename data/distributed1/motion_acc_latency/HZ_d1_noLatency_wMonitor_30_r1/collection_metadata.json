@@ -1,0 +1,16 @@
+{
+  "demo_id": "HZ_d1_noLatency_wMonitor_30",
+  "topics": [
+    "robot_control_cmd",
+    "gripper_control_cmd",
+    "robot_state",
+    "gripper_state"
+  ],
+  "storage_format": "vla",
+  "video_codec": "libx265",
+  "start_time": 1768814930863274773,
+  "end_time": 1768814997359297547,
+  "duration_seconds": 66.496022774,
+  "created_by": "data_collector",
+  "finalized_at": "2026-01-19T09:29:59.673800"
+}
