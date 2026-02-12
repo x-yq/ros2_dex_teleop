@@ -177,7 +177,7 @@ def create_grouped_boxplot(data, metric, ylabel, title, filename):
 
 def main():
     # Configuration
-    data_folder = '/home/x-yq/teleop_dev/data/centered2/resource_usage'  # Change this to your data folder path
+    data_folder = '/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/resource_usage_final'  # Change this to your data folder path
     subfolders = [
         'monitor_30hz_r1', 'monitor_30hz_r2', 'monitor_30hz_r3',
         'monitor_60hz_r1', 'monitor_60hz_r2', 'monitor_60hz_r3',

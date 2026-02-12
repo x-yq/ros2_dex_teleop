@@ -462,7 +462,7 @@ def inspect_hdf5_structure(h5_path):
 
 if __name__ == "__main__":
     # Configuration
-    h5_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_60/HZ_d1_60_buffer.h5"
+    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_noLatency_noMonitor_60_final/HZ_d1_noLatency_noMonitor_60_r2_buffer.h5"
     demo_id = "HZ_d1_60"
     robot_latency_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz/LATENCY_robot_control_cmd.log"
     gripper_latency_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz/LATENCY_gripper_control_cmd.log"
@@ -470,20 +470,20 @@ if __name__ == "__main__":
     # Inspect structure
     inspect_hdf5_structure(h5_path)
     
-    # Main plot: Robot translation + Gripper joints with RTT overlaid
-    print("\n=== Creating Main Trajectory Plot with Latency ===")
-    plot_robot_and_gripper_with_latency(
-        h5_path, 
-        robot_latency_path, 
-        gripper_latency_path,
-        demo_id=demo_id
-    )
+    # # Main plot: Robot translation + Gripper joints with RTT overlaid
+    # print("\n=== Creating Main Trajectory Plot with Latency ===")
+    # plot_robot_and_gripper_with_latency(
+    #     h5_path, 
+    #     robot_latency_path, 
+    #     gripper_latency_path,
+    #     demo_id=demo_id
+    # )
     
-    # Detailed analysis with tracking errors
-    print("\n=== Creating Detailed Analysis Plot ===")
-    plot_detailed_comparison(h5_path, demo_id=demo_id)
+    # # Detailed analysis with tracking errors
+    # print("\n=== Creating Detailed Analysis Plot ===")
+    # plot_detailed_comparison(h5_path, demo_id=demo_id)
     
-    print("\n✓ All plots completed!")
+    # print("\n✓ All plots completed!")
     
     # ===== Timing quality =====
     ts_cmd, _ = load_hdf5_data(h5_path, "robot_control_cmd/pose")
