@@ -78,12 +78,9 @@ class SystemManager(Node):
         
         # Parse root-level config files
         root_config_files = [
-            'calibration.yaml',
-            'container.yaml', 
             'data_stream.yaml',
             'demo.yaml',
             'hardware.yaml',
-            'ros2.yaml'
         ]
         
         for config_file in root_config_files:
@@ -109,11 +106,8 @@ class SystemManager(Node):
         
         # Maintain backward compatibility with existing attributes
         self.data_stream_config = self.all_configs.get('data_stream', {})
-        self.container_config = self.all_configs.get('container', {})
         self.hardware_config = self.all_configs.get('hardware', {})
-        self.ros2_config = self.all_configs.get('ros2', {})
         self.demo_config = self.all_configs.get('demo', {})
-        self.calibration_config = self.all_configs.get('calibration', {})
         
         # Create plugin_config as a consolidated view of component_node configs
         self.plugin_config = self.all_configs.get('component_node', {})
@@ -506,13 +500,14 @@ class SystemManager(Node):
         try:
             while time.time() - start_time < timeout_sec:
                 # Run hardware checkup (make it async if possible)
-                hardware_ok = await self._check_hardware_connections_async()
+                # hardware_ok = await self._check_hardware_connections_async()
                 
                 # Run component checkup (already async)
                 components_ok = await self._check_component_status_async()
                 
                 # Overall checkup result
-                overall_ok = hardware_ok and components_ok
+                # overall_ok = hardware_ok and components_ok
+                overall_ok = components_ok
 
                 if overall_ok:
                     break  # exit loop if everything is okay
@@ -543,79 +538,6 @@ class SystemManager(Node):
         finally:
             self.checkup_running = False
 
-    async def _check_hardware_connections_async(self):
-        """Async version of hardware connections check"""
-        if 'hardware' not in self.all_configs:
-            self.logging(self.system_log_file, 'No hardware config found, skipping hardware check', 'WARN')
-            return True
-        
-        hardware_config = self.all_configs['hardware']
-        all_hardware_ok = True
-        
-        self.logging(self.system_log_file, 'Checking hardware connections (async)...', 'INFO')
-        
-        # Check different hardware categories
-        hardware_categories = ['robots', 'sensors', 'execution_plattforms']
-        
-        # Create tasks for parallel ping operations
-        ping_tasks = []
-        device_info = []
-        
-        for category in hardware_categories:
-            if category in hardware_config:
-                devices = hardware_config[category]
-                if not isinstance(devices, list):
-                    continue
-                for device in devices:
-                    if isinstance(device, dict) and 'ip' in device:
-                        device_name = device.get('hardware_id', 'unknown')
-                        ip_address = device['ip']
-                        
-                        # Create async ping task
-                        task = asyncio.create_task(self._ping_device_async(ip_address))
-                        ping_tasks.append(task)
-                        device_info.append((device_name, ip_address))
-        
-        # Wait for all ping operations to complete
-        if ping_tasks:
-            ping_results = await asyncio.gather(*ping_tasks, return_exceptions=True)
-            
-            # Process results
-            for i, result in enumerate(ping_results):
-                device_name, ip_address = device_info[i]
-                
-                if isinstance(result, Exception):
-                    self.logging(self.system_log_file, f'Hardware FAIL: {device_name} ({ip_address}) - {result}', 'ERROR')
-                    all_hardware_ok = False
-                elif result:
-                    self.logging(self.system_log_file, f'Hardware OK: {device_name} ({ip_address})', 'INFO')
-                else:
-                    self.logging(self.system_log_file, f'Hardware FAIL: {device_name} ({ip_address}) not reachable', 'ERROR')
-                    all_hardware_ok = False
-        
-        return all_hardware_ok
-
-    async def _ping_device_async(self, ip_address):
-        """Async ping a device to check if it's reachable"""
-        try:
-            # # Use asyncio subprocess for non-blocking ping
-            # process = await asyncio.create_subprocess_exec(
-            #     'ping', '-c', '1', '-W', '2', ip_address,
-            #     stdout=asyncio.subprocess.PIPE,
-            #     stderr=asyncio.subprocess.PIPE
-            # )
-            
-            # stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=5.0)
-            # return process.returncode == 0
-
-            return True
-            
-        except asyncio.TimeoutError:
-            self.logging(self.system_log_file, f'Ping timeout for {ip_address}', 'WARN')
-            return False
-        except Exception as e:
-            self.logging(self.system_log_file, f'Ping failed for {ip_address}: {e}', 'ERROR')
-            return False
 
     async def _check_component_status_async(self, timeout=10.0):
         """Async version of component status check"""
