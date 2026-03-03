@@ -17,9 +17,3 @@ plugins:
     params:
       poll_rate: 2.0
       container_ids: ["abc123", "xyz456"]
-
-  # - id: system_monitor
-  #   _target_: monitor_interface.plugins.system_monitor.SystemMonitor
-  #   priority: 2
-  #   params:
-  #     poll_rate: 5.0

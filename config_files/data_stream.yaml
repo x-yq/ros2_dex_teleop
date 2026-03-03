@@ -1,50 +1,36 @@
 topics:
 
- # done
   - id: right_hand_keypoint_raw # also topic name
     latency_test_target: True
     msg_type: component_interfaces/msg/RawHandKeypoint
-    publish_freq: 90 # in hz
     frame_id: vr # must be one of the frame ids defined in the calibration.yaml
     publisher: input_sensor_driver_vr  ## must be layer_cn_id
     subscribers: [input_control_data_processor] # could be multi subscribers
-    dtype: float32 # for data collection based on robo-dm
   
-  # done
   - id: right_hand_keypoint_processed # also topic name
     latency_test_target: True
     msg_type: component_interfaces/msg/ProcessedHandKeypoint
-    publish_freq: 90 # in hz
     frame_id: vr # must be one of the frame ids defined in the calibration.yaml
     publisher: input_control_data_processor ## must be layer_cn_id
     subscribers: [motion_retarget, feedback_data_processor] # could be multi subscribers
-    dtype: float32 # for data collection based on robo-dm
   
-  # done
   - id: robot_control_cmd
     latency_test_target: True
     msg_type: component_interfaces/msg/ControlCmd
-    publish_freq: 120
     frame_id: xarm5_robot
     publisher: motion_retarget
     subscribers: [robot_driver]
-    dtype: float32
 
-  # done
   - id: gripper_control_cmd 
     latency_test_target: True
     msg_type: component_interfaces/msg/ControlCmd
-    publish_freq: 120
     frame_id: xarm5_robot
     publisher: motion_retarget
     subscribers: [robot_driver]
-    dtype: float32
 
-  # done
   - id: robot_state
     latency_test_target: True
     msg_type: component_interfaces/msg/RobotState
-    publish_freq: 90
     frame_id: xarm5_robot
     publisher: robot_driver
     subscribers: [motion_retarget]
@@ -52,47 +38,20 @@ topics:
   - id: gripper_state
     latency_test_target: True
     msg_type: component_interfaces/msg/RobotState
-    publish_freq: 90
     frame_id: xarm5_robot
     publisher: robot_driver
     subscribers: [motion_retarget]
 
-  # done
   - id: /sim_camera/camera/image_raw 
     latency_test_target: False
     msg_type: sensor_msgs/msg/Image
-    publish_freq: 60
     frame_id: xarm5_robot
     publisher: sim_camera
     subscribers: [feedback_projector_driver]
-    encoding: rgb8
-    dtype: unit8
 
-  # # done
-  # - id: scene_image_processed
-  #   latency_test_target: True
-  #   msg_type: component_interfaces/msg/SceneImage
-  #   publish_freq: 60
-  #   frame_id: xarm5_robot
-  #   publisher: feedback_data_processor
-  #   subscribers: [feedback_projector_driver]
-  #   encoding: rgb8
-  #   dtype: unit8
-
- # done
   - id: handkeypoint_plot_2d
     latency_test_target: True
     msg_type: component_interfaces/msg/Hand2DPlotData
-    publish_freq: 60
     frame_id: vr
     publisher: feedback_data_processor
     subscribers: [feedback_projector_driver]
-    dtype: float32
-
-  # - id: robot_state_processed
-  #   latency_test_target: True
-  #   msg_type: component_interfaces/msg/RobotState
-  #   publish_freq: 90
-  #   frame_id: xarm5_robot
-  #   publisher: feedback_data_processor
-  #   subscribers: [feedback_projector_driver]

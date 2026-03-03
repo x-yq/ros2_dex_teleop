@@ -1,8 +1,4 @@
 services:
-  # teleop-env:
-  #   build:
-  #     context: ..
-  #     dockerfile: xxx
 
   teleop-system:
     build:

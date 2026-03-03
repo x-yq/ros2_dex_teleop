@@ -18,23 +18,3 @@ plugins:
     params: # for node with plugin initialization
       frequency: 90
       # simulate_latency: 100
-
-
-  # - id: fish_eye_driver
-  #   _target_: my_pkg.sensor_drivers.FishEyeCamera
-  #   priority: 2
-  #   params:
-  #     cam_ids: [24, 26] 
-  #     width: 640
-  #     height: 480
-  #     fps: 30
-
-  # - id: robot_cam
-  #   _target_: my_pkg.sensor_drivers.RoboCamera
-  #   priority: 3
-  #   params:
-  #     width: 640
-  #     height: 480
-  #     fps: 30
-  #     robot_cam_serial_numbers: ['141722071999', '138422075648', '023422073116']
-
