@@ -546,51 +546,6 @@ class ComponentNode(Node, ABC):
     # Config Loader APIs
     # ------------------------------------------------------------------
     
-    def load_calibration_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-        """
-        Load calibration configuration containing transform matrices and frame definitions.
-        
-        Args:
-            config_keys: Specific keys to retrieve. If None, returns entire config.
-                        Available keys: 'frame_ids', 'general_calibration_transforms', 
-                        'scenario_0_transforms', 'scenario_1_transforms', 'scenario_2_transforms'
-        
-        Returns:
-            Dictionary containing calibration data or None if failed
-        """
-        try:
-            config_data_str = asyncio.run(self.get_config("calibration", config_keys))
-            if config_data_str:
-                config_data = json.loads(config_data_str)
-                self.get_logger().info(f"Loaded calibration config for {self.layer_cn_id}")
-                return config_data
-            return None
-        except Exception as e:
-            self.get_logger().error(f"Failed to load calibration config: {e}")
-            return None
-    
-    def load_calibration_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-        """
-        Load calibration configuration containing transform matrices and frame definitions.
-        
-        Args:
-            config_keys: Specific keys to retrieve. If None, returns entire config.
-                        Available keys: 'frame_ids', 'general_calibration_transforms', 
-                        'scenario_0_transforms', 'scenario_1_transforms', 'scenario_2_transforms'
-        
-        Returns:
-            Dictionary containing calibration data or None if failed
-        """
-        try:
-            config_data_str = asyncio.run(self.get_config("calibration", config_keys))
-            if config_data_str:
-                config_data = json.loads(config_data_str)
-                self.get_logger().info(f"Loaded calibration config for {self.layer_cn_id}")
-                return config_data
-            return None
-        except Exception as e:
-            self.get_logger().error(f"Failed to load calibration config: {e}")
-            return None
     
     def load_data_stream_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
         """
@@ -634,50 +589,6 @@ class ComponentNode(Node, ABC):
             return None
         except Exception as e:
             self.get_logger().error(f"Failed to load hardware config: {e}")
-            return None
-    
-    def load_container_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-        """
-        Load container configuration for Docker deployment.
-        
-        Args:
-            config_keys: Specific keys to retrieve. If None, returns entire config.
-                        Available keys: 'platforms'
-        
-        Returns:
-            Dictionary containing container configuration or None if failed
-        """
-        try:
-            config_data_str = asyncio.run(self.get_config("container", config_keys))
-            if config_data_str:
-                config_data = json.loads(config_data_str)
-                self.get_logger().info(f"Loaded container config for {self.layer_cn_id}")
-                return config_data
-            return None
-        except Exception as e:
-            self.get_logger().error(f"Failed to load container config: {e}")
-            return None
-    
-    def load_ros2_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:
-        """
-        Load ROS2 middleware configuration.
-        
-        Args:
-            config_keys: Specific keys to retrieve. If None, returns entire config.
-                        Available keys: 'middleware'
-        
-        Returns:
-            Dictionary containing ROS2 configuration or None if failed
-        """
-        try:
-            config_data_str = asyncio.run(self.get_config("ros2", config_keys))
-            if config_data_str:
-                config_data = json.loads(config_data_str)
-                self.get_logger().info(f"Loaded ROS2 config for {self.layer_cn_id}")
-                return config_data
-            return None
-        except Exception as e:
-            self.get_logger().error(f"Failed to load ROS2 config: {e}")
             return None
     
     def load_demo_config(self, config_keys: Optional[List[str]] = None) -> Optional[Dict[str, Any]]:

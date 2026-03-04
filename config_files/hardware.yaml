@@ -1,9 +1,9 @@
 execution_plattforms:
   - hardware_id: mac_pc
     execution_plattform: true
-    ip: 172.16.248.5 #192.168.50.228
-    ssh_user: # don't upload to the git repo
-    ssh_password: # don't upload to the git repo
+    ip: 192.168.178.92 #192.168.50.228
+    ssh_user: x-yq # don't upload to the git repo
+    ssh_password: REMOVED_PASSWORD # don't upload to the git repo
 
   - hardware_id: ubuntu 
     execution_plattform: true

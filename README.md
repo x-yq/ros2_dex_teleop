@@ -425,9 +425,9 @@ python3 deploy_system.py --launch-env --ros-domain-id 0
 python3 deploy_system.py --ros-domain-id 0 --force-update
 
 # ── Launch nodes (inside each container) ────────────────────────────
-docker exec -it teleop-system     bash -c "ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=0"
-docker exec -it teleop-components bash -c "ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=0"
-docker exec -it teleop-drivers    bash -c "ros2 launch teleop_launcher driver_nodes.launch.py ros_domain_id:=0"
+docker exec -it teleop-system     bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=0"
+docker exec -it teleop-components bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=0"
+docker exec -it teleop-drivers    bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher driver_nodes.launch.py ros_domain_id:=0"
 # simulator launch — coming soon, see Step 6
 
 # ── Monitor ──────────────────────────────────────────────────────────

@@ -1,0 +1,258 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 980" font-family="monospace" font-size="12">
+
+  <!-- Background -->
+  <rect width="1100" height="980" fill="#fafafa"/>
+
+  <!-- ===== TITLE ===== -->
+  <text x="550" y="28" text-anchor="middle" font-size="15" font-weight="bold" fill="#222">UML Sequence Diagram — SystemManager Async Service Call Flow</text>
+  <text x="550" y="46" text-anchor="middle" font-size="11" fill="#666">Operator calls /system_control "run" → SystemManager fans out "start" to two ComponentNodes concurrently</text>
+
+  <!-- ===== LIFELINE HEADERS ===== -->
+  <!-- Operator -->
+  <rect x="30" y="60" width="110" height="40" rx="4" fill="#d0e8ff" stroke="#4a90d9" stroke-width="1.5"/>
+  <text x="85" y="75" text-anchor="middle" font-size="11" font-weight="bold" fill="#1a3a6b">Operator</text>
+  <text x="85" y="90" text-anchor="middle" font-size="10" fill="#1a3a6b">(CLI / UI)</text>
+
+  <!-- ROS2 Executor Thread -->
+  <rect x="185" y="60" width="140" height="40" rx="4" fill="#d4edda" stroke="#28a745" stroke-width="1.5"/>
+  <text x="255" y="75" text-anchor="middle" font-size="11" font-weight="bold" fill="#155724">ROS2 Executor</text>
+  <text x="255" y="90" text-anchor="middle" font-size="10" fill="#155724">Thread</text>
+
+  <!-- ThreadPool Worker -->
+  <rect x="370" y="60" width="140" height="40" rx="4" fill="#fff3cd" stroke="#ffc107" stroke-width="1.5"/>
+  <text x="440" y="75" text-anchor="middle" font-size="11" font-weight="bold" fill="#856404">ThreadPool</text>
+  <text x="440" y="90" text-anchor="middle" font-size="10" fill="#856404">Worker Thread</text>
+
+  <!-- asyncio Event Loop -->
+  <rect x="555" y="60" width="140" height="40" rx="4" fill="#f8d7da" stroke="#dc3545" stroke-width="1.5"/>
+  <text x="625" y="75" text-anchor="middle" font-size="11" font-weight="bold" fill="#721c24">asyncio</text>
+  <text x="625" y="90" text-anchor="middle" font-size="10" fill="#721c24">Event Loop</text>
+
+  <!-- ComponentNode A -->
+  <rect x="735" y="60" width="130" height="40" rx="4" fill="#e8d5f5" stroke="#9b59b6" stroke-width="1.5"/>
+  <text x="800" y="75" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a235a">ComponentNode</text>
+  <text x="800" y="90" text-anchor="middle" font-size="10" fill="#4a235a">A (camera)</text>
+
+  <!-- ComponentNode B -->
+  <rect x="910" y="60" width="130" height="40" rx="4" fill="#e8d5f5" stroke="#9b59b6" stroke-width="1.5"/>
+  <text x="975" y="75" text-anchor="middle" font-size="11" font-weight="bold" fill="#4a235a">ComponentNode</text>
+  <text x="975" y="90" text-anchor="middle" font-size="10" fill="#4a235a">B (lidar)</text>
+
+  <!-- ===== LIFELINE DASHED LINES ===== -->
+  <line x1="85"  y1="100" x2="85"  y2="960" stroke="#4a90d9" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <line x1="255" y1="100" x2="255" y2="960" stroke="#28a745" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <line x1="440" y1="100" x2="440" y2="960" stroke="#ffc107" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <line x1="625" y1="100" x2="625" y2="960" stroke="#dc3545" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <line x1="800" y1="100" x2="800" y2="960" stroke="#9b59b6" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <line x1="975" y1="100" x2="975" y2="960" stroke="#9b59b6" stroke-width="1.2" stroke-dasharray="5,4"/>
+
+  <!-- ===== ACTIVATION BOXES ===== -->
+  <!-- Operator active: 115-140 -->
+  <rect x="79"  y="115" width="12" height="30" fill="#4a90d9" opacity="0.8"/>
+  <!-- Executor active: 125-540 (long, handles callback + waits) -->
+  <rect x="249" y="125" width="12" height="415" fill="#28a745" opacity="0.8"/>
+  <!-- Worker active: 200-820 -->
+  <rect x="434" y="200" width="12" height="620" fill="#ffc107" opacity="0.8"/>
+  <!-- asyncio active: 255-780 -->
+  <rect x="619" y="255" width="12" height="525" fill="#dc3545" opacity="0.8"/>
+  <!-- CompNode A active: 350-560 -->
+  <rect x="794" y="350" width="12" height="210" fill="#9b59b6" opacity="0.8"/>
+  <!-- CompNode B active: 350-620 -->
+  <rect x="969" y="350" width="12" height="270" fill="#9b59b6" opacity="0.8"/>
+
+  <!-- ===== SECTION LABELS (background bands) ===== -->
+  <rect x="0" y="108" width="1100" height="18" fill="#e8f4e8" opacity="0.5"/>
+  <text x="8" y="120" font-size="10" font-weight="bold" fill="#155724">① Operator calls /system_control</text>
+
+  <rect x="0" y="188" width="1100" height="18" fill="#fff9e6" opacity="0.5"/>
+  <text x="8" y="200" font-size="10" font-weight="bold" fill="#856404">② Offload to ThreadPoolExecutor</text>
+
+  <rect x="0" y="243" width="1100" height="18" fill="#fde8ea" opacity="0.5"/>
+  <text x="8" y="255" font-size="10" font-weight="bold" fill="#721c24">③ New asyncio event loop created in worker thread</text>
+
+  <rect x="0" y="303" width="1100" height="18" fill="#f0e6fa" opacity="0.5"/>
+  <text x="8" y="315" font-size="10" font-weight="bold" fill="#4a235a">④ Concurrent fan-out: asyncio.create_task() × 2</text>
+
+  <rect x="0" y="453" width="1100" height="18" fill="#e6f0fa" opacity="0.5"/>
+  <text x="8" y="465" font-size="10" font-weight="bold" fill="#1a3a6b">⑤ ROS2 Executor resolves futures (components respond)</text>
+
+  <rect x="0" y="643" width="1100" height="18" fill="#e8f4e8" opacity="0.5"/>
+  <text x="8" y="655" font-size="10" font-weight="bold" fill="#155724">⑥ Results collected, response returned to Operator</text>
+
+  <!-- ===== MESSAGES ===== -->
+
+  <!-- 1: Operator → Executor: call /system_control "run" -->
+  <line x1="91" y1="130" x2="249" y2="130" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="165" y="127" text-anchor="middle" font-size="10" fill="#333">call /system_control</text>
+  <text x="165" y="140" text-anchor="middle" font-size="10" fill="#555">"run"</text>
+
+  <!-- 2: Executor: system_ctl_srv_callback_async() note -->
+  <rect x="155" y="148" width="210" height="18" rx="3" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+  <text x="260" y="160" text-anchor="middle" font-size="10" fill="#155724">system_ctl_srv_callback_async()</text>
+
+  <!-- 3: Executor → Worker: thread_pool.submit() -->
+  <line x1="261" y1="205" x2="434" y2="205" stroke="#856404" stroke-width="1.5" stroke-dasharray="6,3" marker-end="url(#arrow-yellow)"/>
+  <text x="345" y="200" text-anchor="middle" font-size="10" fill="#856404">thread_pool.submit(</text>
+  <text x="345" y="213" text-anchor="middle" font-size="10" fill="#856404">_handle_command_sync)</text>
+
+  <!-- 4: Executor self-note: future.result(timeout=30s) — now free to spin -->
+  <rect x="155" y="220" width="210" height="28" rx="3" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+  <text x="260" y="232" text-anchor="middle" font-size="10" fill="#155724">cf_future.result(timeout=30s)</text>
+  <text x="260" y="244" text-anchor="middle" font-size="10" fill="#388824">← executor keeps spinning freely</text>
+
+  <!-- 5: Worker: new event loop -->
+  <rect x="340" y="258" width="210" height="28" rx="3" fill="#fff3cd" stroke="#ffc107" stroke-width="1"/>
+  <text x="445" y="270" text-anchor="middle" font-size="10" fill="#856404">loop = asyncio.new_event_loop()</text>
+  <text x="445" y="282" text-anchor="middle" font-size="10" fill="#856404">loop.run_until_complete(...)</text>
+
+  <!-- 6: Worker → asyncio: run coroutine -->
+  <line x1="446" y1="310" x2="619" y2="310" stroke="#dc3545" stroke-width="1.5" marker-end="url(#arrow-red)"/>
+  <text x="530" y="305" text-anchor="middle" font-size="10" fill="#dc3545">_send_command_to_all_async(</text>
+  <text x="530" y="318" text-anchor="middle" font-size="10" fill="#dc3545">"start")</text>
+
+  <!-- 7: asyncio: create_task for A -->
+  <line x1="631" y1="340" x2="794" y2="340" stroke="#9b59b6" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-purple)"/>
+  <text x="710" y="335" text-anchor="middle" font-size="10" fill="#9b59b6">create_task(call_A)</text>
+
+  <!-- 8: asyncio: create_task for B -->
+  <line x1="631" y1="360" x2="969" y2="360" stroke="#9b59b6" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-purple)"/>
+  <text x="800" y="355" text-anchor="middle" font-size="10" fill="#9b59b6">create_task(call_B)</text>
+
+  <!-- asyncio.gather note -->
+  <rect x="525" y="372" width="205" height="18" rx="3" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+  <text x="627" y="384" text-anchor="middle" font-size="10" fill="#721c24">asyncio.gather(*tasks) + wait_for(5s)</text>
+
+  <!-- 9: Task A: client.call_async → Comp A (DDS) -->
+  <line x1="631" y1="410" x2="794" y2="410" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="710" y="405" text-anchor="middle" font-size="10" fill="#333">call_async(start)</text>
+  <text x="710" y="418" text-anchor="middle" font-size="9" fill="#666">[via DDS transport]</text>
+
+  <!-- 10: Task B: client.call_async → Comp B (DDS) — concurrent -->
+  <line x1="631" y1="430" x2="969" y2="430" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="800" y="425" text-anchor="middle" font-size="10" fill="#333">call_async(start)</text>
+  <text x="800" y="438" text-anchor="middle" font-size="9" fill="#666">[via DDS transport]</text>
+
+  <!-- asyncio polling note -->
+  <rect x="525" y="442" width="205" height="28" rx="3" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+  <text x="627" y="454" text-anchor="middle" font-size="10" fill="#721c24">Tasks A &amp; B: polling loop</text>
+  <text x="627" y="466" text-anchor="middle" font-size="10" fill="#721c24">await asyncio.sleep(0.01) × N</text>
+
+  <!-- CompNode A processing -->
+  <rect x="730" y="470" width="140" height="36" rx="3" fill="#e8d5f5" stroke="#9b59b6" stroke-width="1"/>
+  <text x="800" y="482" text-anchor="middle" font-size="10" fill="#4a235a">set_state("running")</text>
+  <text x="800" y="495" text-anchor="middle" font-size="10" fill="#4a235a">start_component()</text>
+
+  <!-- CompNode B processing -->
+  <rect x="905" y="470" width="140" height="36" rx="3" fill="#e8d5f5" stroke="#9b59b6" stroke-width="1"/>
+  <text x="975" y="482" text-anchor="middle" font-size="10" fill="#4a235a">set_state("running")</text>
+  <text x="975" y="495" text-anchor="middle" font-size="10" fill="#4a235a">start_component()</text>
+
+  <!-- section 5 label already placed -->
+
+  <!-- CompNode A → Executor: DDS response arrives -->
+  <line x1="800" y1="525" x2="261" y2="525" stroke="#28a745" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow-green)"/>
+  <text x="530" y="520" text-anchor="middle" font-size="10" fill="#28a745">DDS response A: {success, status="running"}</text>
+
+  <!-- Executor resolves future A -->
+  <rect x="155" y="530" width="205" height="18" rx="3" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+  <text x="257" y="542" text-anchor="middle" font-size="10" fill="#155724">future_A resolved → future_A.done()=True</text>
+
+  <!-- Task A detects done -->
+  <line x1="261" y1="560" x2="625" y2="560" stroke="#dc3545" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow-red)"/>
+  <text x="440" y="555" text-anchor="middle" font-size="10" fill="#dc3545">Task A: future_A.done()=True → returns result</text>
+
+  <!-- CompNode B → Executor: DDS response arrives (slightly later) -->
+  <line x1="975" y1="590" x2="261" y2="590" stroke="#28a745" stroke-width="1.5" stroke-dasharray="4,3" marker-end="url(#arrow-green)"/>
+  <text x="620" y="585" text-anchor="middle" font-size="10" fill="#28a745">DDS response B: {success, status="running"}</text>
+
+  <!-- Executor resolves future B -->
+  <rect x="155" y="595" width="205" height="18" rx="3" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+  <text x="257" y="607" text-anchor="middle" font-size="10" fill="#155724">future_B resolved → future_B.done()=True</text>
+
+  <!-- Task B detects done -->
+  <line x1="261" y1="625" x2="625" y2="625" stroke="#dc3545" stroke-width="1" stroke-dasharray="3,3" marker-end="url(#arrow-red)"/>
+  <text x="440" y="620" text-anchor="middle" font-size="10" fill="#dc3545">Task B: future_B.done()=True → returns result</text>
+
+  <!-- section 6 -->
+
+  <!-- asyncio.gather completes -->
+  <rect x="525" y="660" width="205" height="18" rx="3" fill="#f8d7da" stroke="#dc3545" stroke-width="1"/>
+  <text x="627" y="672" text-anchor="middle" font-size="10" fill="#721c24">asyncio.gather() complete — all tasks done</text>
+
+  <!-- asyncio → Worker: return results -->
+  <line x1="619" y1="690" x2="446" y2="690" stroke="#856404" stroke-width="1.5" marker-end="url(#arrow-yellow)"/>
+  <text x="530" y="685" text-anchor="middle" font-size="10" fill="#856404">return results dict</text>
+
+  <!-- Worker: event loop closes -->
+  <rect x="340" y="700" width="210" height="18" rx="3" fill="#fff3cd" stroke="#ffc107" stroke-width="1"/>
+  <text x="445" y="712" text-anchor="middle" font-size="10" fill="#856404">loop.close()  ← clean up event loop</text>
+
+  <!-- Worker → Executor: cf_future resolved -->
+  <line x1="434" y1="730" x2="261" y2="730" stroke="#28a745" stroke-width="1.5" marker-end="url(#arrow-green)"/>
+  <text x="345" y="725" text-anchor="middle" font-size="10" fill="#28a745">cf_future resolved: {success, system_state}</text>
+
+  <!-- Executor: builds response -->
+  <rect x="155" y="740" width="210" height="28" rx="3" fill="#d4edda" stroke="#28a745" stroke-width="1"/>
+  <text x="260" y="752" text-anchor="middle" font-size="10" fill="#155724">response.success = True</text>
+  <text x="260" y="764" text-anchor="middle" font-size="10" fill="#155724">response.system_state = "running"</text>
+
+  <!-- Executor → Operator: response -->
+  <line x1="249" y1="785" x2="91" y2="785" stroke="#4a90d9" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow-blue)"/>
+  <text x="165" y="780" text-anchor="middle" font-size="10" fill="#4a90d9">return /system_control response</text>
+  <text x="165" y="793" text-anchor="middle" font-size="10" fill="#4a90d9">{success=True, state="running"}</text>
+
+  <!-- ===== TIMEOUT ANNOTATIONS ===== -->
+  <!-- asyncio timeout bracket -->
+  <line x1="1060" y1="395" x2="1060" y2="672" stroke="#dc3545" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="1055" y1="395" x2="1065" y2="395" stroke="#dc3545" stroke-width="1.5"/>
+  <line x1="1055" y1="672" x2="1065" y2="672" stroke="#dc3545" stroke-width="1.5"/>
+  <text x="1075" y="510" font-size="10" fill="#dc3545" transform="rotate(90,1075,510)">asyncio.wait_for(timeout=5s)</text>
+
+  <!-- thread timeout bracket -->
+  <line x1="1085" y1="205" x2="1085" y2="730" stroke="#856404" stroke-width="1.5" stroke-dasharray="3,2"/>
+  <line x1="1080" y1="205" x2="1090" y2="205" stroke="#856404" stroke-width="1.5"/>
+  <line x1="1080" y1="730" x2="1090" y2="730" stroke="#856404" stroke-width="1.5"/>
+  <text x="1100" y="440" font-size="10" fill="#856404" transform="rotate(90,1100,440)">cf_future.result(timeout=30s)</text>
+
+  <!-- ===== LEGEND ===== -->
+  <rect x="20" y="820" width="500" height="130" rx="5" fill="#f0f0f0" stroke="#ccc" stroke-width="1"/>
+  <text x="270" y="838" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">Legend</text>
+
+  <!-- solid arrow = sync call -->
+  <line x1="35" y1="855" x2="85" y2="855" stroke="#333" stroke-width="1.5" marker-end="url(#arrow)"/>
+  <text x="95" y="859" font-size="10" fill="#333">Synchronous call / message</text>
+
+  <!-- dashed arrow = async / return -->
+  <line x1="35" y1="875" x2="85" y2="875" stroke="#333" stroke-width="1.5" stroke-dasharray="5,3" marker-end="url(#arrow)"/>
+  <text x="95" y="879" font-size="10" fill="#333">Async submit / return / DDS response</text>
+
+  <!-- activation box -->
+  <rect x="35" y="888" width="12" height="18" fill="#28a745" opacity="0.8"/>
+  <text x="55" y="900" font-size="10" fill="#333">Activation box = thread/coroutine actively executing</text>
+
+  <text x="35" y="922" font-size="10" fill="#856404">━ ━ ━  outer bracket = cf_future.result(timeout=30s) — thread-level timeout</text>
+  <text x="35" y="940" font-size="10" fill="#dc3545">━ ━ ━  inner bracket = asyncio.wait_for(timeout=5s) — asyncio-level timeout</text>
+
+  <!-- ===== ARROW MARKERS ===== -->
+  <defs>
+    <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#333"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#28a745"/>
+    </marker>
+    <marker id="arrow-yellow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#856404"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#dc3545"/>
+    </marker>
+    <marker id="arrow-purple" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#9b59b6"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L8,3 z" fill="#4a90d9"/>
+    </marker>
+  </defs>
+
+</svg>
