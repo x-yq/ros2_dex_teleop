@@ -76,6 +76,12 @@ ROS2 Humble officially targets **Ubuntu 22.04 (Jammy)**. The Docker images in th
 
 ---
 
+## VR Headset Setup
+
+> 📌 **Coming soon:** This section will cover pairing and configuring the VR headset for use with the teleoperation system, including network setup, driver installation, and verifying the headset stream is reachable by the `teleop-drivers` container.
+
+---
+
 ## Step 1 — Clone the Repository
 
 Clone the repository on **both machines** (the primary PC and the simulation PC). The deployment script will sync the repo automatically to remote machines, but it is still recommended to clone manually on both so you can inspect and edit config files locally.
@@ -318,7 +324,98 @@ You should see all nodes including the monitor nodes and all component and drive
 
 ---
 
-## Step 9 — Start / Pause the System
+## Step 9.1 — Start / Pause the System
+
+The system is controlled via the `/system_control` service, which broadcasts lifecycle commands to all registered component nodes simultaneously.
+
+**Start the system:**
+```bash
+ros2 service call \
+  /system_control \
+  system_interfaces/srv/SystemControl \
+  "{description: 'start'}"
+```
+
+**Pause the system:**
+```bash
+ros2 service call \
+  /system_control \
+  system_interfaces/srv/SystemControl \
+  "{description: 'pause'}"
+```
+
+**Emergency stop** (immediately halts all components and sets them to `disconnected`):
+```bash
+ros2 service call \
+  /system_control \
+  system_interfaces/srv/SystemControl \
+  "{description: 'urgent_stop'}"
+```
+
+A successful response looks like:
+```
+success: true
+system_state: running        # or 'ready' after pause
+message: "..."
+```
+
+---
+
+## Step 9.2 — Start / Stop Monitoring
+
+Each container has a dedicated monitor node. You must call `start_monitor` on each one individually **before** starting the system, and `stop_monitor` **after** pausing it. Both services require the **full** Docker container ID (not the short hash).
+
+**Get full container IDs first:**
+```bash
+docker ps --no-trunc --format "table {{.Names}}\t{{.ID}}"
+```
+
+**Start all monitors:**
+```bash
+ros2 service call /monitor_ubuntu_simulator/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_system/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_drivers/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_components/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+```
+
+**Stop all monitors** (this triggers metric computation and flushes logs):
+```bash
+ros2 service call /monitor_ubuntu_simulator/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_system/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_drivers/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_components/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+```
+
+> ⚠️ **Order matters:** Always start monitors *before* starting the system, and stop monitors *after* pausing it. Stopping a monitor immediately flushes and closes the stats stream — any metrics collected after that point will be lost.
+
+> 📄 KPI logs are written to `/log/monitor_<container_id>.log` inside the monitor's container. For the full recommended sequence, see `monitor_test.bash`.
+
+---
+
+
+## Step 9.3 — Start / Stop Data Collection
 
 > 📌 **Coming soon:** Detailed instructions for starting and pausing the teleoperation session via ROS2 service calls will be added here once the service interface is finalized.
 
@@ -354,12 +451,6 @@ Or stop containers directly with Docker:
 docker stop teleop-system teleop-components teleop-drivers
 docker stop simulator
 ```
-
----
-
-## VR Headset Setup
-
-> 📌 **Coming soon:** This section will cover pairing and configuring the VR headset for use with the teleoperation system, including network setup, driver installation, and verifying the headset stream is reachable by the `teleop-drivers` container.
 
 ---
 
@@ -410,6 +501,8 @@ sudo apt install docker-compose-plugin
 
 ## Quick Reference
 
+### Deployment
+
 ```bash
 # ── Deploy ────────────────────────────────────────────────────────────
 # Deploy teleop containers (remote)
@@ -430,26 +523,55 @@ docker exec -it teleop-components bash -c "source /opt/ros/humble/setup.bash && 
 docker exec -it teleop-drivers    bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher driver_nodes.launch.py ros_domain_id:=0"
 # simulator launch — coming soon, see Step 6
 
-# ── Monitor ──────────────────────────────────────────────────────────
-docker ps                               # check container status
-docker logs --tail 50 <container-name>  # container logs
-ros2 node list                          # list all active ROS2 nodes (inside any container)
-ros2 topic list                         # list all active ROS2 topics
-
 # ── Stop ─────────────────────────────────────────────────────────────
 python3 deploy_system.py --stop
 python3 deploy_system.py --launch-env --stop
 ```
+
+### Monitoring
+
+```bash
+# Show name alongside full ID
+docker ps --no-trunc --format "table {{.Names}}\t{{.ID}}"
+
+# Start monitor for one container
+ros2 service call \
+  /<monitor_node_name>/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['<full_container_id>']}"
+
+## Example
+ros2 service call \
+  /monitor_ubuntu_simulator/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['f962a026f2e1049d7fc4770703f3f742ecde8c7c18e49e721d8755f8ceee2429']}"
+
+# Stop monitor for one container
+ros2 service call \
+  /<monitor_node_name>/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['<full_container_id>']}"
+
+## Example
+ros2 service call \
+  /monitor_ubuntu_simulator/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['f962a026f2e1049d7fc4770703f3f742ecde8c7c18e49e721d8755f8ceee2429']}"
+```
+
 ---
 
 ## What's Next
 
-The following sections will be added to this guide:
+For more details please see the following docs.
 
+- **Config and deploy a new teleoperation system using this framework** - [Doc](config_files/docs/config_deploy.md)
+- **System Manager and Component Node** - [Doc](config_files/docs/systemManager_component_node.md.md)
+- **ROS2 Interface** — [Doc](config_files/docs/ros2_interface.md)
+- **Resource Monitoring** — [Doc](config_files/docs/monitor_node.md)
+- **Latency Measurement** —  `5. Latency Measurement: End-to-End Setup Guide` in the [Doc](config_files/docs/systemManager_component_node.md.md)
+
+- **Data Collection** — how to configure and trigger the `data_collector` node
 - **Simulator Setup** — full Gazebo environment setup, display configuration, and xArm5 model installation on Ubuntu x86
 - **VR Headset Setup** — pairing, driver installation, and network configuration for the VR headset
-- **System Start / Pause** — ROS2 service calls to start and pause the teleoperation session without restarting containers or nodes
 - **Package Descriptions** — what each ROS2 package does and how the nodes communicate
-- **Resource Monitoring** — how to use the `kpi_monitor` to track CPU, memory, and network usage per node
-- **Latency Measurement** — tools and procedures for measuring end-to-end teleoperation latency
-- **Data Collection** — how to configure and trigger the `data_collector` node

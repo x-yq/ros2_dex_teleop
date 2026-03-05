@@ -244,7 +244,14 @@ The concrete subclass verifies that plugin objects (e.g. a camera driver, a sens
 
 # 3. ROS2 Service Calls Summary
 
-## Services Provided by SystemManager
+For this part please refer to the following part in the [document](ros2_interface.md):
+
+- `system_interfaces/srv/Logging`
+- `system_interfaces/srv/GetConfig`
+- `system_interfaces/srv/SystemControl`
+- `system_interfaces/srv/ComponentService`
+
+<!-- ## Services Provided by SystemManager
 
 ### `/logging`
 - **Type:** `system_interfaces/srv/Logging`
@@ -289,7 +296,7 @@ The concrete subclass verifies that plugin objects (e.g. a camera driver, a sens
 | `checkup` | Read state, no side effects | current state |
 | `start` | `set_state("running")` + `start_component()` | `running` |
 | `pause` | `set_state("ready")` + `pause_component()` | `ready` |
-| `urgent_stop` | `stop_component()` + `urgent_stop()` + `set_state("disconnected")` | `disconnected` |
+| `urgent_stop` | `stop_component()` + `urgent_stop()` + `set_state("disconnected")` | `disconnected` | -->
 
 ---
 
