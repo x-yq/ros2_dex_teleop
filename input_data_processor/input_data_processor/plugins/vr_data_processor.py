@@ -20,10 +20,6 @@ class VRHandKeypointProcessor(DataProcessorBase):
     def __init__(self, layer_cn_id: str, ros2_domain_id: Optional[int] = None):
         super().__init__(layer_cn_id, ros2_domain_id)
         
-        # Additional attributes for this specific processor
-        self.processing_frequency = 90  # Hz
-        self.processing_counter = 0
-
         self._load_my_config()
         if self.simulate_latency > 0:
             self._setup_latency_simulation()
@@ -50,14 +46,12 @@ class VRHandKeypointProcessor(DataProcessorBase):
             # Load this component's specific configuration
             self.my_config = self.load_my_config()
             if self.my_config and "plugins" in self.my_config:
-                # Extract processing frequency from plugin parameters if available
                 plugins = self.my_config["plugins"]
                 for plugin in plugins:
                     if plugin.get('id') == 'vr_handkeypoint_processor':
                         plugin_params = plugin.get('params', {})
-                        self.processing_frequency = plugin_params.get("frequency", self.processing_frequency)
                         self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
-                        self.get_logger().info(f"Loaded processor config: {self.processing_frequency}Hz")
+                        self.get_logger().info(f"Loaded processor config")
                         break
                 
         except Exception as e:

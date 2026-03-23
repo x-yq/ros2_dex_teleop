@@ -31,7 +31,6 @@ class SimXArm5Driver(RobotDriverBase):
         # Driver specific attributes from config
         self.freq = 120
         self.scale_factor = 1.0
-        self.default_controllers = []
         
         # Robot state
         self.joint_names = ["joint1", "joint2", "joint3", "joint4", "joint5"]
@@ -84,13 +83,11 @@ class SimXArm5Driver(RobotDriverBase):
                         plugin_params = plugin.get('params', {})
                         self.freq = plugin_params.get("freq", self.freq)
                         self.scale_factor = plugin_params.get("scale_factor", self.scale_factor)
-                        self.default_controllers = plugin_params.get("default_controller", [])
                         if 'joint_names' in plugin_params:
                             self.joint_names = plugin_params['joint_names']
                         self.get_logger().info(
                             f"Loaded driver config: freq={self.freq}Hz, "
                             f"scale_factor={self.scale_factor}, "
-                            f"controllers={self.default_controllers}"
                         )
                         break
                 

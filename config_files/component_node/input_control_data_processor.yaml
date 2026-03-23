@@ -2,19 +2,8 @@
 layer_cn_id: input_control_data_processor ## must be node name
 pkg_name: input_data_processor ## ros2 pkg name
 
-meta:
-  description: "Process the input raw keypoint data"
-  layer: algorithm
-  type: [input_data] # input_data or feedback_data
-  priority: 1
-  ros2_domain_id: None # optional
-  
-# fallback plugin
-default_plugin: vr_handkeypoint_processor
-
 plugins:
   - id: vr_handkeypoint_processor
-    priority: 1
     params: # for node with plugin initialization
       frequency: 90
       # simulate_latency: 100

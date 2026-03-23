@@ -50,14 +50,14 @@ class MotionRetargetOT(DataProcessorBase):
         self.gripper_cnt = 0  # Counter for debouncing pinch detection
         self.gripper_debounce_frames = 3  # Number of frames to confirm pinch
         
-        # NEW: Wrist rotation control for robot base joint
+        # Wrist rotation control for robot base joint
         self.wrist_rotation_threshold = 1.57  # Rotation threshold in radians (~90 degrees)
         self.wrist_rotation_scale = 0.5  # Scale factor for mapping wrist rotation to joint rotation
         self.accumulated_wrist_rotation = 0.0  # Accumulated wrist rotation angle
         self.base_joint_angle = 0.0  # Current base joint angle
         self.prev_hand_y_axis = None  # Previous hand y-axis for rotation calculation
         
-        # NEW: Calibration gesture detection parameters
+        # Calibration gesture detection parameters
         self.calibration_distance_threshold = 0.04  # Distance threshold for thumb-middle touch (meters)
         self.calibration_gesture_cnt = 0  # Counter for debouncing calibration gesture
         self.calibration_debounce_frames = 5  # Number of frames to confirm calibration gesture
@@ -86,7 +86,7 @@ class MotionRetargetOT(DataProcessorBase):
             if self.my_config and "plugins" in self.my_config:
                 plugins = self.my_config["plugins"]
                 for plugin in plugins:
-                    if plugin.get('id') == 'motion_retargeting':
+                    if plugin.get('id') == 'motion_retarget_ot':
                         plugin_params = plugin.get('params', {})
                         self.position_scale = plugin_params.get("position_scale", self.position_scale)
                         self.rotation_scale = plugin_params.get("rotation_scale", self.rotation_scale)

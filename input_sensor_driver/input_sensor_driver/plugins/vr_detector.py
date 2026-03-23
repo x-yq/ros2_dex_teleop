@@ -56,7 +56,7 @@ class VRDetectorDriver(SensorDriverBase):
                         self.right_hand_port = plugin_params.get("right_hand_port", self.right_hand_port)
                         self.button_port = plugin_params.get("button_port", self.button_port)
 
-                        # self.freq = plugin_params.get("freq", self.freq)
+                        self.freq = plugin_params.get("freq", self.freq)
                         self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
                         self.get_logger().info(f"Loaded VRDriver config: {self.freq}Hz")
                         break

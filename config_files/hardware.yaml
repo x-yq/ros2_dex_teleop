@@ -2,8 +2,8 @@ execution_plattforms:
   - hardware_id: mac_pc
     execution_plattform: true
     ip: 192.168.178.92 #192.168.50.228
-    ssh_user: x-yq # don't upload to the git repo
-    ssh_password: REMOVED_PASSWORD # don't upload to the git repo
+    ssh_user: # don't upload to the git repo
+    ssh_password: # don't upload to the git repo
 
   - hardware_id: ubuntu 
     execution_plattform: true
@@ -11,14 +11,14 @@ execution_plattforms:
     ssh_user: # don't upload to the git repo
     ssh_password: # don't upload to the git repo
 
-sensors:
+sensors: # example, not actually used in the scenario
 
   - hardware_id: vr_headset
     execution_plattform: false
     driver_layer_cn_id: sensor_driver_rococo
     ip: 192.168.1.103
 
-robots:
+robots: # example, not actually used in the scenario
   - hardware_id: xarm5_robot
     execution_plattform: false
     driver_layer_cn_id: xarm5_robot
