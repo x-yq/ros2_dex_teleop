@@ -5,5 +5,4 @@ pkg_name: input_data_processor ## ros2 pkg name
 plugins:
   - id: vr_handkeypoint_processor
     params: # for node with plugin initialization
-      frequency: 90
-      # simulate_latency: 100
+      moving_average_limit: 5
