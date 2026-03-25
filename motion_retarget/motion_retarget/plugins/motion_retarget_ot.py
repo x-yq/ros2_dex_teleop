@@ -216,8 +216,27 @@ class MotionRetargetOT(DataProcessorBase):
     
     def _check_calibration_gesture(self):
         """
-        Check for calibration gesture (thumb-middle finger touch).
-        Toggles between pause/reset and resume/recalibrate states.
+        Detect the thumb-to-middle-finger calibration gesture with debouncing.
+ 
+        Computes the Euclidean distance between the thumb tip (joint 19) and the
+        middle finger tip (joint 21) in the canonical hand coordinate frame.
+        When the distance stays below ``self.calibration_distance_threshold`` for
+        ``self.calibration_debounce_frames`` consecutive callbacks, the gesture is
+        considered confirmed and :meth:`_handle_calibration_gesture` is called
+        **once** (edge-triggered, not level-triggered).
+ 
+        The counter and ``prev_calibration_gesture`` flag are reset as soon as the
+        fingers separate, enabling the gesture to be triggered again on the next
+        touch.
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
         """
         try:
             if self.current_hand_coords is None:
@@ -255,9 +274,28 @@ class MotionRetargetOT(DataProcessorBase):
     
     def _handle_calibration_gesture(self):
         """
-        Handle calibration gesture trigger.
-        First touch: Pause system and reset calibration
-        Second touch: Resume system and initialize with current state as new origin
+        Respond to a confirmed calibration gesture with a two-state toggle.
+ 
+        **First confirmed touch** — pauses the system and resets all calibration
+        state (hand origin, robot origin, last hand frame, gripper state). While
+        paused, no robot or gripper commands are published.
+ 
+        **Second confirmed touch** — resumes the system and immediately calls
+        :meth:`_initialize_calibration` so the current hand and robot pose become
+        the new reference frame. If either datum is missing the resume is aborted
+        and an error is logged.
+ 
+        This two-step flow lets the operator reposition themselves freely between
+        the two touches without sending unintended motion commands.
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
         """
         try:
             if not self.system_paused:
@@ -297,7 +335,36 @@ class MotionRetargetOT(DataProcessorBase):
             self.handle_error(f"Error handling calibration gesture: ", e)
     
     def _initialize_calibration(self):
-        """Initialize calibration by storing initial hand and robot poses"""
+        """
+        Snapshot the current hand and robot poses as the retargeting reference frame.
+ 
+        Records three anchors that all subsequent motion commands are expressed
+        relative to:
+ 
+        - ``hand_origin_offset`` — wrist world position at calibration time; used
+          to compute position deltas.
+        - ``robot_origin`` — robot end-effector XYZ at calibration time; deltas
+          are added back to this to produce absolute target positions.
+        - ``last_hand_frame`` — palm axis triad ``{x, y, z}`` at calibration time;
+          used as the *previous* frame in the first incremental rotation
+          computation after calibration.
+ 
+        Also initialises wrist-rotation tracking (``prev_hand_y_axis``,
+        ``accumulated_wrist_rotation``) and sets ``self.initialized = True``,
+        allowing :meth:`hand_keypoint_callback` to start emitting commands.
+ 
+        Returns immediately (no-op) if either ``current_hand_frame`` or
+        ``current_robot_pose`` is not yet available.
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """        
         try:
             if self.current_hand_frame is None or self.current_robot_pose is None:
                 return
@@ -397,7 +464,47 @@ class MotionRetargetOT(DataProcessorBase):
             self.handle_error(f"Error generating robot command: ", e)
     
     def _calculate_target_orientation(self) -> Quaternion:
-        """Calculate target robot orientation from hand frame"""
+        """
+        Compute the absolute target end-effector orientation from the incremental
+        palm frame rotation.
+ 
+        Builds 3×3 rotation matrices from the current and previous palm frame
+        axis triads ``{x, y, z}`` and computes the relative rotation between
+        them::
+ 
+            R_delta = R_current · R_last^T
+ 
+        The delta is then expressed in the robot base frame via the
+        hand→robot axis permutation::
+ 
+            hand_to_robot = [[0, 0, 1],   # Hand Z → Robot X
+                             [−1, 0, 0],  # Hand −X → Robot Y
+                             [0, 1, 0]]   # Hand Y → Robot Z
+ 
+            R_robot_delta = hand_to_robot · R_delta · hand_to_robot^T
+ 
+        The rotation vector of ``R_robot_delta`` is scaled by
+        ``self.rotation_scale`` and then composed onto the current robot
+        orientation quaternion::
+ 
+            q_target = q_current ⊗ q(R_robot_delta_scaled)
+ 
+        Falls back to the current robot orientation quaternion if
+        ``last_hand_frame`` is not yet set or an exception occurs.
+ 
+        Returns:
+            geometry_msgs.msg.Quaternion: Absolute target orientation for the
+                                          robot end-effector.
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """        
         try:
             if self.last_hand_frame is None:
                 # Return current robot orientation if no previous frame
@@ -511,13 +618,34 @@ class MotionRetargetOT(DataProcessorBase):
     
     def _get_gripper_state_from_hand_keypoints(self) -> Tuple[bool, bool, bool]:
         """
-        Detect gripper state from hand keypoints based on thumb-pinky distance.
-        
+        Detect gripper open/close state from thumb-to-pinky tip distance.
+ 
+        Computes the Euclidean distance between the thumb tip (joint 19) and the
+        pinky tip (joint 23) in the canonical hand coordinate frame. When the
+        distance falls below ``self.gripper_distance_threshold`` for exactly
+        ``self.gripper_debounce_frames`` consecutive callbacks the gripper state
+        is toggled (open → closed or closed → open). The debounce counter
+        continues to increment after the toggle so the gesture must fully release
+        (fingers separate) before a second toggle can occur.
+ 
         Returns:
-            Tuple[bool, bool, bool]: 
-                - gripper_state: Current gripper state (False=open, True=closed)
-                - status_changed: Whether the state changed from previous
-                - trigger_flag: Whether a new pinch was just detected
+            Tuple[bool, bool, bool]:
+                - **gripper_state** — current gripper state after this call
+                  (``False`` = open, ``True`` = closed).
+                - **status_changed** — ``True`` if a toggle just occurred; the
+                  caller should publish a gripper command only when this is
+                  ``True``.
+                - **trigger_flag** — ``True`` on the exact frame the toggle fires
+                  (always equals ``status_changed`` in the current implementation).
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
         """
         try:
             # Calculate distance between thumb tip and pinky tip
@@ -624,12 +752,38 @@ class MotionRetargetOT(DataProcessorBase):
     
     def _calculate_wrist_rotation(self) -> Optional[float]:
         """
-        Calculate wrist rotation angle based on hand frame y-axis rotation.
-        The y-axis represents the palm normal, so rotating the wrist changes this axis.
-        
+        Compute the signed wrist roll angle between the previous and current callback.
+ 
+        Wrist roll is defined as rotation of the palm around the hand's forward
+        axis (``z_axis``, pointing in the direction the fingers point). The palm
+        normal (``y_axis``) is tracked frame-to-frame; its angular displacement
+        projected onto the plane perpendicular to ``z_axis`` gives the roll angle.
+ 
+        Algorithm:
+ 
+        1. Project both the current and previous ``y_axis`` vectors onto the
+           plane perpendicular to the current ``z_axis`` (removes out-of-plane
+           components caused by combined wrist motions).
+        2. Normalise both projected vectors.
+        3. Compute the unsigned angle between them via ``arccos(dot)`` (clamped
+           to ``[−1, 1]`` for numerical safety).
+        4. Determine the sign from the cross-product of the two projected
+           vectors, dotted with ``z_axis``: positive = clockwise when looking
+           down ``z_axis``, negative = counter-clockwise.
+ 
         Returns:
-            float: Rotation angle in radians (positive=clockwise, negative=counter-clockwise)
-                   Returns None if calculation fails
+            float | None: Signed rotation angle in radians for this frame step,
+                          or ``None`` if ``prev_hand_y_axis`` is not initialised
+                          or a numerical exception occurs.
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
         """
         try:
             if self.prev_hand_y_axis is None:
@@ -669,7 +823,27 @@ class MotionRetargetOT(DataProcessorBase):
             return None
     
     def reset_calibration(self):
-        """Reset calibration - useful for recalibrating during runtime"""
+        """
+        Programmatically reset all calibration and gesture state.
+ 
+        Clears the hand origin, robot origin, and last hand frame so the node
+        will re-initialise on the next callback. Also resets the gripper toggle,
+        the calibration gesture debounce, and the wrist rotation accumulator.
+        Unpauses the system if it was paused.
+ 
+        Intended for use by the broader component lifecycle framework or external
+        service calls when a full re-calibration is required without using the
+        in-hand gesture (e.g. at startup, after a robot fault, or from a GUI).
+ 
+        .. note::
+            Adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """        
         self.initialized = False
         self.system_paused = False
         self.hand_origin_offset = np.array([0.0, 0.0, 0.0])

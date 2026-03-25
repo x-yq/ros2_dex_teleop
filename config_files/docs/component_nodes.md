@@ -444,3 +444,302 @@ The keypoint transformation design used in this processor (`_normalize_vector`, 
 > arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
 
 Source repository: https://github.com/aadhithya14/Open-Teach
+
+---
+---
+# MotionRetargetOT Node Documentation
+
+## Overview
+
+`MotionRetargetOT` is a ROS2 motion retargeting node that maps processed VR hand pose data onto robot Cartesian and joint commands. It subscribes to smoothed hand keypoints from `VRHandKeypointProcessor`, translates wrist-relative position deltas and palm orientation changes into end-effector target poses, detects finger-pinch gestures for gripper control, and supports in-operation recalibration via a dedicated hand gesture. All processing is callback-driven — the node has no internal timer.
+
+
+## Inheritance
+
+```
+rclpy.Node
+  └── ComponentNode
+        └── MotionRetargetBase (ABC)
+              └── MotionRetargetOT
+```
+
+
+## Configuration
+
+### Config File Location and Naming
+
+The configuration file **must** be named after the `layer_cn_id` and placed in:
+
+```
+config_files/component_node/<layer_cn_id>.yaml
+```
+
+For this node:
+
+```
+config_files/component_node/motion_retarget.yaml
+```
+
+### Config File Format
+
+```yaml
+# config_files/component_node/motion_retarget.yaml
+
+layer_cn_id: motion_retarget
+pkg_name: motion_retarget
+
+plugins:
+  - id: motion_retarget_ot
+    params:
+      position_scale: 1.0                    # Linear scale on position deltas
+      rotation_scale: 1.0                    # Linear scale on rotation deltas
+      gripper_distance_threshold: 0.05       # Thumb-pinky distance (m) to trigger pinch
+      gripper_debounce_frames: 3             # Frames pinch must hold before toggling gripper
+      calibration_distance_threshold: 0.04   # Thumb-middle distance (m) to trigger calibration gesture
+      calibration_debounce_frames: 5         # Frames gesture must hold before triggering
+      wrist_rotation_threshold: 1.57         # Accumulated wrist rotation (rad) to fire a base joint command
+      wrist_rotation_scale: 0.5             # Scale factor applied to accumulated wrist rotation
+```
+
+### Parameter Reference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `position_scale` | `float` | `1.0` | Multiplier applied to all Cartesian position deltas before sending to the robot |
+| `rotation_scale` | `float` | `1.0` | Multiplier applied to end-effector rotation delta (rotation vector magnitude) |
+| `gripper_distance_threshold` | `float` | `0.05` | Euclidean distance (m) between thumb tip and pinky tip below which a pinch is detected |
+| `gripper_debounce_frames` | `int` | `3` | Number of consecutive frames the pinch must be held to toggle the gripper |
+| `calibration_distance_threshold` | `float` | `0.04` | Distance (m) between thumb tip and middle finger tip to detect the calibration gesture |
+| `calibration_debounce_frames` | `int` | `5` | Frames the calibration gesture must be held to trigger a state change |
+| `wrist_rotation_threshold` | `float` | `1.57` | Accumulated wrist rotation in radians (~90°) before a base joint command is emitted |
+| `wrist_rotation_scale` | `float` | `0.5` | Scale applied to accumulated wrist rotation when computing the joint angle delta |
+| `simulate_latency` | `int` | `0` | Artificial latency in ms; `0` or omitted disables simulation |
+
+> **Note:** `workspace_offset` (an XYZ array added to every target position) is supported in code but not currently exposed in the YAML — it defaults to `[0.0, 0.0, 0.0]`.
+
+---
+
+## What the Node Does
+
+`MotionRetargetOT` bridges the human operator's hand pose to robot motion in four parallel functions on every received message:
+
+1. **Calibration gesture detection** — monitors thumb-middle finger proximity; a confirmed touch toggles between *pause-and-reset* and *resume-and-recalibrate* states.
+2. **Auto-initialisation** — on the first message after calibration is ready, records the current hand origin and robot pose as the reference frame.
+3. **End-effector command generation** — maps hand position deltas and palm frame rotation changes to absolute Cartesian target poses for the robot arm.
+4. **Gripper command generation** — monitors thumb-pinky proximity and toggles the gripper between open and closed on each confirmed pinch.
+
+
+## Features and Functions
+
+### Initialisation
+
+```python
+MotionRetargetOT(layer_cn_id: str, ros2_domain_id: Optional[int] = None)
+```
+
+Sets up all state variables and then calls `_load_my_config()`:
+
+- `position_scale`, `rotation_scale`, `workspace_offset` — motion scaling
+- `hand_origin_offset`, `robot_origin`, `last_hand_frame` — calibration anchors
+- `gripper_flag`, `gripper_cnt`, `gripper_debounce_frames` — gripper debounce state
+- `calibration_gesture_cnt`, `calibration_debounce_frames`, `system_paused` — gesture debounce state
+- `accumulated_wrist_rotation`, `base_joint_angle`, `prev_hand_y_axis` — wrist rotation tracking
+- The Oculus joint index map (identical to `VRHandKeypointProcessor`)
+
+
+### `register_pub_sub()`
+
+Iterates over `data_stream_config["topics"]` and registers:
+
+- **Subscriptions** for topics where `self.layer_cn_id` is in `subscribers`:
+  - `component_interfaces/msg/ProcessedHandKeypoint` → `hand_keypoint_callback`
+  - `component_interfaces/msg/RobotState` → `robot_state_callback`
+- **Publishers** for topics where `publisher == self.layer_cn_id`:
+  - `component_interfaces/msg/ControlCmd` (used for both arm and gripper commands)
+
+
+### `hand_keypoint_callback(msg)`
+
+Central processing callback. On every message:
+
+1. Validates `hand_coords` (must be 72 floats) and `hand_frame` (must be 12 floats).
+2. Reshapes into `(24, 3)` joint array and parses the 4×3 frame descriptor into named axes.
+3. Calls `_check_calibration_gesture()`.
+4. If not yet initialised and not paused, calls `_initialize_calibration()`.
+5. If initialised and not paused, calls `_generate_robot_command()` and `_generate_gripper_command()`.
+
+### `robot_state_callback(msg)`
+
+Receives `RobotState` messages. Routes by `robot_id`:
+- `"xarm5"` → updates `self.current_robot_pose` (end-effector `Pose`)
+- anything else → treated as gripper state feedback
+
+---
+
+## Data I/O
+
+### Subscribed Topics
+
+| Topic ID | Message Type | Description |
+|----------|-------------|-------------|
+| `right_hand_keypoint_processed` | `component_interfaces/msg/ProcessedHandKeypoint` | Smoothed, canonical-frame hand keypoints from `VRHandKeypointProcessor` |
+| `robot_state` | `component_interfaces/msg/RobotState` | Current robot end-effector pose (used for absolute command computation) |
+
+### Published Topics
+
+| Topic ID | Message Type | Description |
+|----------|-------------|-------------|
+| `robot_control_cmd` | `component_interfaces/msg/ControlCmd` | Absolute Cartesian target pose for the robot arm |
+| `gripper_control_cmd` | `component_interfaces/msg/ControlCmd` | Joint-space gripper open/close command |
+
+All topic names are resolved dynamically from the shared data stream configuration at runtime.
+
+### `ControlCmd` Message Fields Used
+
+| Field | Arm command | Gripper command |
+|-------|-------------|-----------------|
+| `robot_id` | `"xarm5"` | `"xarm_gripper"` |
+| `space` | `"cartesian"` | `"joint"` |
+| `relative` | `False` (absolute) | `False` (absolute) |
+| `pose` | Target `Pose` (position + orientation) | — |
+| `joint_angles` | — | `[0.85]` (closed) or `[0.0]` (open) |
+
+---
+
+## Hand-to-Robot Motion Retargeting
+
+The retargeting pipeline converts the operator's hand pose — expressed in Oculus tracking space — into absolute robot Cartesian commands. It operates in three stages: calibration, position mapping, and orientation mapping.
+
+### Stage 0 — Calibration (`_initialize_calibration`)
+
+Before any commands are emitted the node captures two reference frames:
+
+- `hand_origin_offset` — the wrist world position (`hand_frame['origin']`) at the moment of calibration.
+- `robot_origin` — the robot end-effector XYZ position at the same moment.
+- `last_hand_frame` — the full `{x, y, z}` axis triad of the palm frame at calibration time.
+
+From this point on, all position and rotation commands are expressed as *deltas from these references*, making the mapping independent of where in the tracking volume the operator's hand happens to be.
+
+### Stage 1 — Position Mapping (`_generate_robot_command`)
+
+```
+hand_position_delta  =  current_hand_frame['origin']  −  hand_origin_offset
+```
+
+The Oculus hand frame axes are:
+- **X** — index → pinky (lateral, rightward)
+- **Y** — palm normal (upward out of palm)
+- **Z** — palm forward (pointing direction)
+
+These are remapped to the robot base frame (X forward, Y left, Z up):
+
+```
+robot_delta_X  =  +hand_delta_Z   (hand forward  → robot forward)
+robot_delta_Y  =  −hand_delta_X   (hand rightward → robot leftward)
+robot_delta_Z  =  +hand_delta_Y   (hand palm-up   → robot upward)
+```
+
+The delta is scaled by `position_scale` and added to `robot_origin` and `workspace_offset` to yield an absolute target position.
+
+### Stage 2 — Orientation Mapping (`_calculate_target_orientation`)
+
+End-effector orientation is tracked as an *incremental* rotation — the change in palm frame between the previous and current callback:
+
+```
+R_delta  =  R_current · R_last^T
+```
+
+where `R_current` and `R_last` are 3×3 matrices whose columns are the current and previous palm `{x, y, z}` axis triples respectively.
+
+The incremental rotation is then transformed into robot frame using the same axis permutation as the position mapping:
+
+```
+hand_to_robot  =  [[0, 0, 1],    # Hand Z → Robot X
+                   [−1, 0, 0],   # Hand −X → Robot Y
+                   [0, 1, 0]]    # Hand Y → Robot Z
+
+R_robot_delta  =  hand_to_robot · R_delta · hand_to_robot^T
+```
+
+The rotation vector of `R_robot_delta` is scaled by `rotation_scale`, then composed onto the current robot orientation quaternion:
+
+```
+q_target  =  q_current  ⊗  q(R_robot_delta_scaled)
+```
+
+Publishing a fully specified `Pose` (position + orientation) on every callback gives the robot controller an absolute target in its base frame on each update.
+
+### Stage 3 — Calibration Gesture (`_check_calibration_gesture` / `_handle_calibration_gesture`)
+
+A dedicated in-operation recalibration flow is triggered by touching the **thumb tip to the middle finger tip** (joint indices 19 and 21 in the canonical frame):
+
+```
+distance  =  ‖ hand_coords[19] − hand_coords[21] ‖
+```
+
+A FIFO debounce counter (`calibration_gesture_cnt`) must reach `calibration_debounce_frames` before the gesture fires, preventing accidental triggers. The gesture is **edge-triggered** — it fires once per touch, not continuously. The state machine has two transitions:
+
+```
+System RUNNING  ──(gesture)──►  PAUSED + calibration reset
+System PAUSED   ──(gesture)──►  RUNNING + new calibration initialised
+```
+
+While paused, all robot and gripper commands are suppressed. On resume, `_initialize_calibration()` is called immediately with the current hand and robot state as the new reference frame.
+
+### Stage 4 — Gripper Control (`_get_gripper_state_from_hand_keypoints`)
+
+The gripper is toggled by pinching the **thumb tip to the pinky tip** (joint indices 19 and 23):
+
+```
+distance  =  ‖ hand_coords[19] − hand_coords[23] ‖
+```
+
+A separate debounce counter (`gripper_cnt`) must hit `gripper_debounce_frames` exactly (equality, not `>=`) to fire a single toggle. After toggling, the counter continues to accumulate until the fingers separate, preventing repeated rapid toggles on a sustained pinch.
+
+```
+gripper_flag  =  NOT gripper_flag    (on each confirmed pinch)
+target_angle  =  0.85  if closed     (joint-space command)
+               =  0.0   if open
+```
+
+A `ControlCmd` is published only when the state changes, avoiding redundant messages.
+
+### Full Pipeline Summary
+
+```
+ProcessedHandKeypoint (24×3 joints + 4×3 frame)
+            │
+            ▼
+  _check_calibration_gesture()
+  [thumb-middle touch → pause/reset or resume/recalibrate]
+            │
+            ├──── system paused? ──── YES ──► suppress all commands
+            │
+            NO
+            ▼
+  _initialize_calibration()  (first callback only)
+  [snapshot hand_origin, robot_origin, last_hand_frame]
+            │
+            ├──────────────────────────────────────────────┐
+            ▼                                              ▼
+  _generate_robot_command()              _generate_gripper_command()
+  ┌─ position delta (hand→robot axes) ┐  [thumb-pinky pinch → toggle]
+  │  + _calculate_target_orientation()│       │
+  │    (incremental palm frame diff)  │       ▼
+  └───────────────────────────────────┘  gripper_control_cmd (joint)
+            │
+            ▼
+  robot_control_cmd (cartesian, absolute)
+```
+
+---
+
+## Acknowledgements
+
+The gesture detection and motion retargeting design used in this node (`_check_calibration_gesture`, `_handle_calibration_gesture`, `_initialize_calibration`, `_calculate_target_orientation`, `_calculate_wrist_rotation`, `_get_gripper_state_from_hand_keypoints`, `reset_calibration`) is adapted from the **Open-Teach** teleoperation system:
+
+> Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+> *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+> arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+
+Source repository: https://github.com/aadhithya14/Open-Teach
