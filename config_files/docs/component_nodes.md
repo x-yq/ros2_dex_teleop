@@ -743,3 +743,199 @@ The gesture detection and motion retargeting design used in this node (`_check_c
 > arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
 
 Source repository: https://github.com/aadhithya14/Open-Teach
+
+---
+---
+
+# MultiFeedbackDataProcessor Node Documentation
+
+## Overview
+
+`MultiFeedbackDataProcessor` is a ROS2 data processor node that generates visual feedback data from processed hand keypoints. Currently it renders a **real-time 2D skeletal hand plot** and publishes it as a `Hand2DPlotData` message carrying a BGR image. The node is callback-driven and extensible.
+
+---
+
+## Inheritance
+
+```
+rclpy.Node
+  └── ComponentNode
+        └── DataProcessorBase (ABC)
+              └── MultiFeedbackDataProcessor
+```
+
+The helper class `PlotHand2D` is a self-contained Matplotlib renderer and is instantiated as a member object — it does not participate in the ROS2 node hierarchy.
+
+---
+
+## Configuration
+
+### Config File Location and Naming
+
+The configuration file **must** be named after the `layer_cn_id` and placed in:
+
+```
+config_files/component_node/<layer_cn_id>.yaml
+```
+
+For this node:
+
+```
+config_files/component_node/feedback_data_processor.yaml
+```
+
+### Config File Format
+
+```yaml
+# config_files/component_node/feedback_data_processor.yaml
+
+layer_cn_id: feedback_data_processor
+pkg_name: feedback_data_processor
+
+plugins:
+  - id: multi_feedback
+    params:
+      types: ["hand_2d_plot"]   # List of active feedback processing types
+```
+
+---
+
+## What the Node Does
+
+`MultiFeedbackDataProcessor` sits at the end of the teleoperation pipeline and produces operator-facing visual feedback. On every incoming `ProcessedHandKeypoint` message it:
+
+1. Stores the latest message for reference.
+2. Checks which feedback types are active (from `self.processing_types`).
+3. For `"hand_2d_plot"`: renders a 2D skeletal hand image via `PlotHand2D` and publishes it as a `Hand2DPlotData` message.
+
+---
+
+## Features and Functions
+
+### Initialisation
+
+```python
+MultiFeedbackDataProcessor(layer_cn_id: str, ros2_domain_id: Optional[int] = None)
+```
+
+After chaining through `DataProcessorBase.__init__`:
+
+- Sets `processing_types = ["hand_2d_plot"]` as the default active pipeline list.
+- Creates a `CvBridge` instance for converting OpenCV images to ROS2 `sensor_msgs/Image`.
+- Creates a `tf2_ros.Buffer` and `TransformListener` for end-effector pose lookup.
+- Calls `_load_my_config()` to overwrite `processing_types` from YAML if provided.
+- Instantiates `PlotHand2D` as `self.plotter2D`.
+
+
+### `_load_my_config()`
+
+Reads the YAML plugin block for `multi_feedback` and overwrites `self.processing_types` from `params.types` if present. Logs a warning (but does not error) if no config is found, falling back to the default list.
+
+
+### `register_pub_sub()`
+
+Iterates over `data_stream_config["topics"]` and registers:
+
+- A **subscription** for every topic where `self.layer_cn_id` is in `subscribers` and `msg_type` is `component_interfaces/msg/ProcessedHandKeypoint`. Callback: `hand_keypoint_callback`.
+- A **publisher** for every topic where `publisher == self.layer_cn_id` and `msg_type` is `component_interfaces/msg/Hand2DPlotData`.
+
+
+### `hand_keypoint_callback(msg)`
+
+Stores the incoming message in `self.latest_hand_keypoints`, then conditionally calls `process_hand_data(msg)` if `"hand_2d_plot"` is in `self.processing_types`.
+
+
+### `process_hand_data(msg)`
+
+The main rendering pipeline (see full detail in the [2D Hand Plot section](#2d-hand-plot-visualisation) below):
+
+1. Reshapes `msg.hand_coords` (72 floats) to `(24, 3)`.
+2. Passes the X and Y columns to `self.plotter2D.draw()`, which returns an RGB NumPy array.
+3. Converts RGB → BGR with `cv2.cvtColor`.
+4. Wraps the image in a `Hand2DPlotData` message using `CvBridge`.
+5. Publishes to `"handkeypoint_plot_2d"`.
+
+---
+
+## Data I/O
+
+### Subscribed Topics
+
+| Topic ID | Message Type | Description |
+|----------|-------------|-------------|
+| `right_hand_keypoint_processed` | `component_interfaces/msg/ProcessedHandKeypoint` | Smoothed 24-joint hand coordinates from `VRHandKeypointProcessor` |
+
+### Published Topics
+
+| Topic ID | Message Type | Description |
+|----------|-------------|-------------|
+| `handkeypoint_plot_2d` | `component_interfaces/msg/Hand2DPlotData` | Rendered 2D hand skeleton image + metadata |
+
+### `Hand2DPlotData` Message Fields Used
+
+| Field | Content |
+|-------|---------|
+| `header` | Copied from input message, stamp updated to now |
+| `hand_id` | Fixed string `"right_hand"` |
+| `plotter` | `sensor_msgs/Image` (BGR8 encoding, 360×360 px at 60 DPI) |
+
+---
+
+## 2D Hand Plot Visualisation
+
+### Helper Class: `PlotHand2D`
+
+`PlotHand2D` is a stateful Matplotlib renderer that creates **one persistent figure** at construction time and reuses it on every frame, avoiding the overhead of creating and destroying figure objects at 90 Hz.
+
+```python
+self.fig = plt.figure(figsize=(6, 6), dpi=60)   # → 360×360 pixel output
+self.canvas = FigureCanvas(self.fig)
+self.ax = self.fig.add_subplot(111)
+```
+
+Using the non-interactive `Agg` backend (`matplotlib.use("Agg")`) means no GUI window is ever opened — the figure renders directly to an in-memory RGBA buffer.
+
+
+### Coordinate Input
+
+The `draw(X, Y)` method receives two 1D arrays of length 24 — the **X** and **Y** columns of the 24×3 canonical joint coordinate array produced by `VRHandKeypointProcessor`. These are already in the wrist-centred, rotation-normalised frame, so the plot is stable regardless of the operator's hand position or orientation in the VR tracking volume.
+
+The fixed axis limits are:
+
+```
+X: [−0.12,  0.12]  metres
+Y: [−0.02,  0.20]  metres
+```
+
+
+### Skeleton Drawing (`draw_hand`)
+
+The skeleton is drawn by connecting joint pairs according to the Oculus joint index map:
+
+| Connection group | How drawn |
+|-----------------|-----------|
+| Wrist → each metacarpal (joints 2, 6, 9, 12, 15) | Lines from joint 0 to each metacarpal |
+| Within each finger group | Consecutive joint pairs along `knuckles`, `thumb`, `index`, `middle`, `ring`, `pinky` lists |
+| All 24 joints | Red dots (`'ro'`) |
+
+This produces a complete skeletal hand figure with five rays from the wrist and four segments per finger (plus the thumb chain).
+<!-- 
+
+### Thumb Constraint Boundary
+
+A fixed 8-vertex polygon (`thumb_bounds`) is drawn over the plot every frame. It represents the **admissible region** for thumb tip motion — a spatial constraint boundary that provides the operator with visual feedback on whether the thumb is within the expected operating range. The polygon vertices are hardcoded in metres and match the canonical coordinate frame of the processed keypoints.
+
+The polygon is redrawn on every frame via `_draw_thumb_bounds`, which connects consecutive vertices cyclically (including the closing edge from last back to first). -->
+
+
+---
+
+## Acknowledgements
+
+The `PlotHand2D` class and 2D hand skeleton visualisation design are adapted from the **Open-Teach** teleoperation system:
+
+> Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+> *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+> arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+
+Source repository: https://github.com/aadhithya14/Open-Teach
