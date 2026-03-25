@@ -22,6 +22,16 @@ import threading
 import time
 
 class ZMQCompressedImageTransmitter(object):
+    """
+        .. note::
+        Adapted from the Open-Teach teleoperation system:
+
+        | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+        | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+        | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+        |
+        | Source: https://github.com/aadhithya14/Open-Teach
+    """
     def __init__(self, host, port):
         self._host, self._port = host, port
         # self._init_push_socket()
@@ -108,6 +118,16 @@ class VRDriver(FeedbackProjectorDriverBase):
             self.handle_error("Failed to load configurations", e)
 
     def _register_zmq_pub(self):
+        """
+            .. note::
+            Adapted from the Open-Teach teleoperation system:
+
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """
         
         if self.rgb_viz_zmq_publisher:
             self.rgb_viz_zmq_publisher.stop()
@@ -122,6 +142,16 @@ class VRDriver(FeedbackProjectorDriverBase):
         )
     
     def create_pull_socket(self, host, port):
+        """
+            .. note::
+            Adapted from the Open-Teach teleoperation system:
+
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """
         context = zmq.Context()
         socket = context.socket(zmq.PULL)
         socket.setsockopt(zmq.CONFLATE, 1)
@@ -181,19 +211,19 @@ class VRDriver(FeedbackProjectorDriverBase):
         except Exception as e:
             self.handle_error("Failed to register subscriptions", e)
 
-    def _extract_data_from_token(self, token):        
-        data = token.decode().strip()
-        information = dict()
-        keypoint_vals = [0] if data.startswith('absolute') else [1]
-        # Data is in the format <hand>:x,y,z|x,y,z|x,y,z
-        vector_strings = data.split(':')[1].strip().split('|')
-        for vector_str in vector_strings:
-            vector_vals = vector_str.split(',')
-            for float_str in vector_vals[:3]:
-                keypoint_vals.append(float(float_str))
+    # def _extract_data_from_token(self, token):        
+    #     data = token.decode().strip()
+    #     information = dict()
+    #     keypoint_vals = [0] if data.startswith('absolute') else [1]
+    #     # Data is in the format <hand>:x,y,z|x,y,z|x,y,z
+    #     vector_strings = data.split(':')[1].strip().split('|')
+    #     for vector_str in vector_strings:
+    #         vector_vals = vector_str.split(',')
+    #         for float_str in vector_vals[:3]:
+    #             keypoint_vals.append(float(float_str))
             
-        information['keypoints'] = keypoint_vals
-        return information
+    #     information['keypoints'] = keypoint_vals
+    #     return information
     
     def _create_raw_hand_keypoint_msg(self, hand_data: Dict[str, Any]) -> RawHandKeypoint:
         """Create RawHandKeypoint message from parsed hand token data."""
@@ -240,6 +270,16 @@ class VRDriver(FeedbackProjectorDriverBase):
         
 
     def _rescale_image(self, image, rescale_factor):
+        """
+            .. note::
+            Adapted from the Open-Teach teleoperation system:
+
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """
         # Ensure RGB format
         img_rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 

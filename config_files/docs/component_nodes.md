@@ -747,6 +747,302 @@ Source repository: https://github.com/aadhithya14/Open-Teach
 ---
 ---
 
+# SimXArm5Driver Node Documentation
+
+## Overview
+
+`SimXArm5Driver` is a ROS2 robot driver node for a **simulated XArm5 robot arm and gripper** running in Gazebo. It bridges the high-level teleoperation command pipeline (`ControlCmd` messages) to the low-level `ros2_control` interfaces exposed by the Gazebo simulation: a Cartesian motion controller topic, and two `FollowJointTrajectory` action servers (one for the arm, one for the gripper). It simultaneously reads the simulation's joint state feedback and publishes it upstream as `RobotState` messages at a configurable frequency.
+
+---
+
+## Inheritance
+
+```
+rclpy.Node
+  └── ComponentNode
+        └── RobotDriverBase (ABC, simulated=True)
+              └── SimXArm5Driver
+```
+
+
+## Configuration
+
+### Config File Location and Naming
+
+The configuration file **must** be named after the `layer_cn_id` and placed in:
+
+```
+config_files/component_node/<layer_cn_id>.yaml
+```
+
+For this node:
+
+```
+config_files/component_node/robot_driver.yaml
+```
+
+### Config File Format
+
+```yaml
+# config_files/component_node/robot_driver.yaml
+
+layer_cn_id: robot_driver
+pkg_name: robot_driver
+simulated: True
+
+plugins:
+  - id: sim_xarm5_driver
+    priority: 1
+    params:
+      freq: 90                                              # State publishing frequency (Hz)
+      scale_factor: 1.0                                    # Scale applied to relative motion commands
+      joint_names: ["joint1", "joint2", "joint3", "joint4", "joint5"]
+```
+
+### Parameter Reference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `freq` | `int` | `120` | Timer frequency in Hz for `publish_state()` |
+| `scale_factor` | `float` | `1.0` | Multiplier applied to relative Cartesian and joint position deltas |
+| `joint_names` | `list[str]` | `["joint1"…"joint5"]` | Names of the five robot arm joints, used to filter the `/joint_states` topic |
+
+> **Note:** `simulated: True` at the top level is read by `RobotDriverBase` and sets `self.simulated = True`, which causes `_initialize_robot()` to skip any physical hardware connection and immediately mark the robot as connected.
+
+---
+
+## What the Node Does
+
+`SimXArm5Driver` has three concurrent responsibilities:
+
+1. **Command reception** — subscribes to `robot_control_cmd` and `gripper_control_cmd`, decodes each `ControlCmd`, and dispatches it to either the Cartesian controller or a `FollowJointTrajectory` action server.
+2. **State feedback** — subscribes to `/joint_states` from `ros2_control`, separates arm and gripper joints, and queries TF2 for end-effector poses. A timer at `freq` Hz assembles and publishes `RobotState` messages upstream.
+3. **Robot initialisation** — on startup, sets `robot_active = True` immediately (simulation mode assumes the robot is always reachable) and registers all required publishers, subscribers, and action clients.
+
+---
+
+## Features and Functions
+
+### Initialisation (`__init__`)
+
+After chaining through `RobotDriverBase.__init__(simulated=True)`:
+
+- Sets default values for `freq`, `scale_factor`, `joint_names`, and `gripper_joint_names = ["drive_joint"]`.
+- Defines hardcoded initial poses for the arm (`robot_initial_pose`) and gripper fingers (`gripper_initial_pose`).
+- Creates a TF2 `Buffer` and `TransformListener` for end-effector pose queries.
+- Calls `_load_my_config()`.
+- Calls `_initialize_robot()` to set `robot_active = True`.
+
+
+### `_load_my_config()`
+
+Reads the YAML plugin block for `sim_xarm5_driver` and overwrites `freq`, `scale_factor`, and `joint_names` from `params`.
+
+
+### `register_pub_sub()`
+
+Creates all ROS2 interfaces needed for simulation control. There are two categories:
+
+**From `data_stream_config` (dynamic):**
+
+| Direction | Topic | Type | Condition |
+|-----------|-------|------|-----------|
+| Publisher | `robot_state` | `component_interfaces/msg/RobotState` | `publisher == layer_cn_id` |
+| Publisher | `gripper_state` | `component_interfaces/msg/RobotState` | `publisher == layer_cn_id` |
+| Subscriber | `robot_control_cmd` | `component_interfaces/msg/ControlCmd` | `layer_cn_id` in `subscribers` |
+| Subscriber | `gripper_control_cmd` | `component_interfaces/msg/ControlCmd` | `layer_cn_id` in `subscribers` |
+
+Both `ControlCmd` subscribers share the same callback (`cmd_sub_callback`) with the `topic_id` captured via closure.
+
+**Fixed (always registered, independent of data stream config):**
+
+| Interface | Type | ROS2 name | Purpose |
+|-----------|------|-----------|---------|
+| Subscriber | `sensor_msgs/JointState` | `/joint_states` | Gazebo joint feedback |
+| Publisher | `geometry_msgs/PoseStamped` | `/xarm5_cartesian_motion_controller/target_frame` | Cartesian motion target |
+| Action client | `FollowJointTrajectory` | `/xarm5_traj_controller/follow_joint_trajectory` | Arm joint trajectory execution |
+| Action client | `FollowJointTrajectory` | `/xarm_gripper_traj_controller/follow_joint_trajectory` | Gripper trajectory execution |
+
+
+### `register_timer()`
+
+Cancels any existing timers and creates a single new ROS2 timer at period `1.0 / freq` seconds, bound to `publish_state()`.
+
+
+### `joint_state_callback(msg: JointState)`
+
+Receives `/joint_states` from `ros2_control` and splits the unified message into two separate `JointState` objects by name matching:
+
+- Names in `self.joint_names` → `self.current_robot_joint_state`
+- Names in `self.gripper_joint_names` → `self.current_gripper_joint_state`
+
+Position, velocity, and effort arrays are all filtered and stored in parallel.
+
+
+### `cmd_sub_callback(msg: ControlCmd, topic_id: str)`
+
+Entry point for all incoming motion commands:
+
+1. Calls `pong_reply(topic_id, msg)` for latency bookkeeping.
+2. Rejects commands for unknown `robot_id` values.
+3. Determines arm vs. gripper from `topic_id` or `msg.robot_id`.
+4. Dispatches by `msg.space`:
+   - `"cartesian"` → `move_cartesian(msg)` (arm only; gripper does not support Cartesian)
+   - `"joint"` → `move_joint(msg, group='robot'|'gripper')`
+
+
+### `publish_state()`
+
+Called by the timer at `freq` Hz:
+
+1. Calls `get_state("xarm5")` to assemble arm state (joint positions + TF-derived EEF pose).
+2. Calls `get_state("xarm_gripper")` to assemble gripper state (joint position + finger-averaged pose).
+3. Converts each to a `RobotState` message via `_create_robot_state_msg()` and publishes to `robot_state` / `gripper_state`.
+
+---
+
+## Data I/O
+
+### Subscribed Topics
+
+| Topic | Message Type | Source | Description |
+|-------|-------------|--------|-------------|
+| `robot_control_cmd` | `component_interfaces/msg/ControlCmd` | `MotionRetargetOT` | Arm Cartesian or joint-space command |
+| `gripper_control_cmd` | `component_interfaces/msg/ControlCmd` | `MotionRetargetOT` | Gripper open/close joint command |
+| `/joint_states` | `sensor_msgs/msg/JointState` | Gazebo / `ros2_control` | Unified joint feedback for all joints |
+
+### Published Topics
+
+| Topic | Message Type | Consumers | Description |
+|-------|-------------|-----------|-------------|
+| `robot_state` | `component_interfaces/msg/RobotState` | `MotionRetargetOT` | Arm joint state + EEF pose |
+| `gripper_state` | `component_interfaces/msg/RobotState` | `MotionRetargetOT` | Gripper joint state + center pose |
+| `/xarm5_cartesian_motion_controller/target_frame` (in use) | `geometry_msgs/msg/PoseStamped` | Gazebo Cartesian controller | Target EEF pose for Cartesian motion |
+
+### Action Clients
+
+| Action server | Type | Purpose |
+|--------------|------|---------|
+| `/xarm5_traj_controller/follow_joint_trajectory` | `control_msgs/action/FollowJointTrajectory` | Execute arm joint trajectories |
+| `/xarm_gripper_traj_controller/follow_joint_trajectory` (in use) | `control_msgs/action/FollowJointTrajectory` | Execute gripper open/close trajectories |
+
+---
+
+## Gazebo / ros2_control Integration
+
+The node interfaces with the Gazebo simulation through two complementary `ros2_control` mechanisms — one for Cartesian control and one for joint-space control.
+
+### Cartesian Control — Topic Publisher
+
+```
+cartesian_target_pub  →  /xarm5_cartesian_motion_controller/target_frame
+                          (geometry_msgs/PoseStamped)
+```
+
+The `xarm5_cartesian_motion_controller` is a `ros2_control` controller loaded in the Gazebo simulation that accepts target end-effector poses and computes the required joint commands internally (via inverse kinematics or a Cartesian impedance law). The node simply publishes the desired `PoseStamped` in the `link_base` frame on every Cartesian command; the controller streams it to the simulated hardware interface.
+
+**Absolute commands** — the target pose from `ControlCmd.pose` is published directly.
+
+**Relative commands** — `_apply_relative_cartesian()` is called first: the current EEF pose is fetched from TF2 (`link_base` → `link5`), then the position delta is added component-wise with `scale_factor`, and the orientation delta is composed via quaternion multiplication after scaling the rotation vector.
+
+---
+
+### Joint-Space Control — `FollowJointTrajectory` Action
+
+```
+robot_traj_action_client   →  /xarm5_traj_controller/follow_joint_trajectory
+gripper_action_client      →  /xarm_gripper_traj_controller/follow_joint_trajectory
+                               (control_msgs/action/FollowJointTrajectory)
+```
+
+`FollowJointTrajectory` is the standard `ros2_control` joint trajectory interface. The node constructs a two-point trajectory on each command — start at the current joint position (from the last `/joint_states` message), end at the target — and sends it as an asynchronous action goal.
+
+#### Trajectory Construction (`_send_robot_trajectory` / `_send_gripper_trajectory`)
+
+Both helpers follow the same pattern:
+
+```
+point1  →  current_positions,  velocities=[0],  time=0 s
+point2  →  target_positions,   velocities=[0],  time=T s
+```
+
+The execution time `T` is computed dynamically from the maximum joint displacement, assuming a conservative peak velocity of 1.0 rad/s:
+
+```
+T = max( max_displacement / 1.0,  0.1 )   [seconds]
+```
+
+This guarantees a minimum motion duration of 100 ms and scales linearly with the commanded displacement. The goal is sent with `send_goal_async()` — the node does not block waiting for completion, allowing subsequent commands to arrive while motion is executing.
+
+For the **gripper**, the target position is clamped to `[0.0, 1.0]` before submission, and relative commands are scaled by `scale_factor`.
+
+---
+
+### TF2 State Feedback
+
+Rather than relying on a dedicated state topic from the robot SDK (which would be used for a physical robot), the simulated driver reads the robot's current pose directly from the TF2 tree, which is populated by `robot_state_publisher` running alongside the Gazebo simulation:
+
+| Query | `base_frame` | `eef_frame` | Used for |
+|-------|-------------|------------|---------|
+| Arm EEF pose | `link_base` | `link5` | `robot_state` message, `move_cartesian` current pose |
+| Gripper center pose | `xarm_gripper_base_link` | `right_finger` + `left_finger` | `gripper_state` message |
+
+The gripper center pose is the element-wise mean of the right and left finger positions in the gripper base frame (`get_gripper_center_pose`).
+
+---
+
+### Full Command Flow
+
+```
+ControlCmd  (robot_control_cmd / gripper_control_cmd)
+        │
+        ▼
+cmd_sub_callback()
+        │
+        ├── space == "cartesian" ──► move_cartesian()
+        │                               │
+        │                          get_eef_pose_from_tf()  [TF2]
+        │                               │
+        │                          _apply_relative_cartesian()  [if relative]
+        │                               │
+        │                          cartesian_target_pub.publish(PoseStamped)
+        │                               │
+        │                               ▼
+        │                    /xarm5_cartesian_motion_controller/target_frame
+        │                    [ros2_control → Gazebo hardware interface]
+        │
+        └── space == "joint"  ──► move_joint(group='robot'|'gripper')
+                                        │
+                                   _send_robot_trajectory()
+                                   _send_gripper_trajectory()
+                                        │
+                                   FollowJointTrajectory.Goal
+                                   (2-point trajectory, adaptive time)
+                                        │
+                                        ▼
+                           /xarm5_traj_controller/...
+                           /xarm_gripper_traj_controller/...
+                           [ros2_control action server → Gazebo]
+
+
+/joint_states  ────────────────────────────────────────────────────►
+[Gazebo → ros2_control]                                             │
+        │                                                           │
+        ▼                                                      TF2 tree
+joint_state_callback()                                        (robot_state_publisher)
+  ├── current_robot_joint_state                                     │
+  └── current_gripper_joint_state                                   │
+                │                                                   │
+                ▼                                                   ▼
+         publish_state()  [timer @ freq Hz]             get_eef_pose_from_tf()
+         ├── RobotState (robot_state)
+         └── RobotState (gripper_state)
+```
+
+
+---
+---
+
 # MultiFeedbackDataProcessor Node Documentation
 
 ## Overview
@@ -933,6 +1229,244 @@ The polygon is redrawn on every frame via `_draw_thumb_bounds`, which connects c
 ## Acknowledgements
 
 The `PlotHand2D` class and 2D hand skeleton visualisation design are adapted from the **Open-Teach** teleoperation system:
+
+> Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+> *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+> arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+
+Source repository: https://github.com/aadhithya14/Open-Teach
+
+---
+---
+
+# VRDriver Node Documentation
+
+## Overview
+
+`VRDriver` is a ROS2 feedback projector driver node that acts as the **outbound display bridge** between the ROS2 pipeline and the VR headset. It subscribes to processed visual feedback data (scene camera images and 2D hand skeleton plots), compresses them as JPEG, and streams them over ZeroMQ PUB sockets to the VR execution platform for display inside the headset. All processing is callback-driven — the node has no active internal timer.
+
+The node also contains a helper class `ZMQCompressedImageTransmitter` that encapsulates the ZMQ publishing logic for a single image stream.
+
+
+## Inheritance
+
+```
+rclpy.Node
+  └── ComponentNode
+        └── FeedbackProjectorDriverBase (ABC)
+              └── VRDriver
+```
+
+The helper class `ZMQCompressedImageTransmitter` is a plain Python object instantiated as member attributes — it does not participate in the ROS2 node hierarchy.
+
+
+## Configuration
+
+### Config File Location and Naming
+
+The configuration file **must** be named after the `layer_cn_id` and placed in:
+
+```
+config_files/component_node/<layer_cn_id>.yaml
+```
+
+For this node:
+
+```
+config_files/component_node/feedback_projector_driver.yaml
+```
+
+### Config File Format
+
+```yaml
+# config_files/component_node/feedback_projector_driver.yaml
+
+layer_cn_id: feedback_projector_driver
+pkg_name: feedback_projector_driver
+
+plugins:
+  - id: vr_driver
+    params:
+      width: 640                             # Target image width (pixels)
+      height: 480                            # Target image height (pixels)
+      execution_platform_ip: 192.168.178.92  # IP of the server connecting to the VR headset
+      vr_cam_port: 10505                     # ZMQ port for scene camera stream
+      vr_graph_port: 15001                   # ZMQ port for hand 2D plot stream
+```
+
+### Parameter Reference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `width` | `int` | `1280` | Reference image width in pixels; actual output size is controlled per-callback by the `rescale_factor` passed to `_rescale_image` |
+| `height` | `int` | `720` | Reference image height in pixels; see `width` note |
+| `execution_platform_ip` | `str` | `192.168.178.54` | IP address of the machine running the VR application (ZMQ subscriber side) |
+| `vr_cam_port` | `int` | `10505` | ZMQ PUB port for the scene camera RGB image stream |
+| `vr_graph_port` | `int` | `15001` | ZMQ PUB port for the 2D hand skeleton plot image stream |
+
+
+---
+
+## What the Node Does
+
+`VRDriver` is the final stage of the visual feedback pipeline. It receives rendered images produced upstream in the ROS2 graph and forwards them into the VR environment via compressed ZMQ streams:
+
+1. **Binds two ZMQ PUB sockets** at initialisation — one per image channel — to the configured execution platform IP and ports.
+2. **Subscribes to two ROS2 image topics**: a scene camera image and a 2D hand skeleton plot.
+3. **On each incoming message**: decodes the image using `CvBridge`, rescales it (converting BGR→RGB in the process), and immediately transmits the JPEG-compressed frame over the corresponding ZMQ socket.
+
+The VR application on the execution platform connects to these ZMQ sockets and renders each stream as a display panel inside the headset.
+
+---
+
+## Features and Functions
+
+### Helper Class: `ZMQCompressedImageTransmitter`
+
+A lightweight wrapper around a single ZMQ socket that handles context creation, socket lifecycle, and JPEG compression.
+
+```python
+ZMQCompressedImageTransmitter(host: str, port: int)
+```
+
+Calls `_init_publisher()` on construction. A `_init_push_socket()` variant (PUSH topology) is defined but unused.
+
+**`_init_publisher()`** — Creates a ZMQ `PUB` socket and binds it to `tcp://<host>:<port>`.
+
+**`send_image(rgb_image)`** — JPEG-encodes the RGB image via `cv2.imencode('.jpg', ...)` using `IMWRITE_WEBP_QUALITY = 10` (aggressive compression to minimise bandwidth) and sends the raw byte buffer over the socket.
+
+**`stop()`** — Closes the socket and terminates the ZMQ context cleanly.
+
+---
+
+### Initialisation (`__init__`)
+
+After chaining through `FeedbackProjectorDriverBase.__init__`:
+
+- Sets default values for all network parameters and image dimensions.
+- Creates a `CvBridge` instance for ROS2 ↔ OpenCV image conversion.
+- Calls `_load_my_config()` to overwrite defaults from YAML.
+- Calls `_register_zmq_pub()` to bind both ZMQ PUB sockets.
+
+
+### `_load_my_config()`
+
+Reads the YAML plugin block for `vr_driver` and overwrites `width`, `height`, `execution_platform_ip`, `vr_cam_port`, and `vr_graph_port` from `params`. Falls back silently to hardcoded defaults if the file or plugin block is absent.
+
+
+### `_register_zmq_pub()`
+
+Stops the existing `rgb_viz_zmq_publisher` if already running (safe re-registration), then creates two `ZMQCompressedImageTransmitter` instances bound to the configured host and ports:
+
+| Attribute | Port param | Purpose |
+|-----------|-----------|---------|
+| `rgb_viz_zmq_publisher` | `vr_cam_port` | Scene camera RGB stream |
+| `hand_2d_zmq_publisher` | `vr_graph_port` | 2D hand skeleton plot stream |
+
+
+### `register_pub_sub()`
+
+Iterates over `data_stream_config["topics"]` and creates ROS2 subscriptions for every topic where `self.layer_cn_id` appears in `subscribers`:
+
+- `sensor_msgs/msg/Image` → `scene_image_callback`
+- `component_interfaces/msg/Hand2DPlotData` → `hand_plot_callback`
+
+This node registers **no publishers** — it is a pure sink in the ROS2 topic graph.
+
+
+### `scene_image_callback(msg: Image)`
+
+Triggered on every incoming scene camera frame:
+
+1. Decodes `sensor_msgs/Image` to a BGR OpenCV array via `CvBridge`.
+2. Calls `_rescale_image(img, rescale_factor=1)` — no spatial downscale, but performs BGR → RGB conversion.
+3. Stores the result in `self.latest_scene_image`.
+4. Calls `rgb_viz_zmq_publisher.send_image(...)` to transmit the compressed frame immediately.
+
+
+### `hand_plot_callback(msg: Hand2DPlotData)`
+
+Triggered on every incoming hand skeleton plot frame:
+
+1. Calls `pong_reply('handkeypoint_plot_2d', msg)` for latency/heartbeat bookkeeping.
+2. Decodes `msg.plotter` (a `sensor_msgs/Image`, BGR8 encoding) to an OpenCV BGR array via `CvBridge`.
+3. Calls `_rescale_image(img, rescale_factor=4)` — downscales to ¼ linear dimensions and converts BGR → RGB.
+4. Stores the result in `self.latest_hand_plot_data`.
+5. Calls `hand_2d_zmq_publisher.send_image(...)` to transmit immediately.
+
+The larger rescale factor (4×) for the hand plot versus the scene image (1×) reflects its role as a small overlay panel in the headset rather than a main viewport.
+
+
+### `_rescale_image(image, rescale_factor) -> np.ndarray`
+
+Shared utility used by both callbacks:
+
+1. Converts BGR → RGB via `cv2.cvtColor`.
+2. Computes new dimensions: `(original_width / rescale_factor, original_height / rescale_factor)`.
+3. Resizes with `cv2.INTER_AREA` interpolation (optimal quality for downscaling).
+
+Returns an RGB NumPy array ready for `send_image`.
+
+---
+
+## Data I/O
+
+### Subscribed Topics
+
+| Topic ID | Message Type | Description |
+|----------|-------------|-------------|
+| *(configured in data stream)* | `sensor_msgs/msg/Image` | Scene camera image from an upstream camera node |
+| `handkeypoint_plot_2d` | `component_interfaces/msg/Hand2DPlotData` | Rendered 2D hand skeleton image from `MultiFeedbackDataProcessor` |
+
+Topic names are resolved dynamically from the shared data stream configuration at runtime.
+
+### Published Topics
+
+None. `VRDriver` is a **pure sink** in the ROS2 topic graph. All outbound data is transmitted over ZMQ.
+
+### ZMQ Output Sockets (Egress)
+
+| Attribute | Socket type | Port | Content | Scale |
+|-----------|-------------|------|---------|-------|
+| `rgb_viz_zmq_publisher` | ZMQ PUB, TCP | `vr_cam_port` (10505) | Scene camera image | 1× (full resolution) |
+| `hand_2d_zmq_publisher` | ZMQ PUB, TCP | `vr_graph_port` (15001) | Hand skeleton plot | ¼ (360→90 px linear) |
+
+Both sockets **bind** on the local machine; the VR application **connects** to them from the execution platform. Each message is a raw JPEG byte buffer.
+
+---
+
+## Data Flow Summary
+
+```
+ROS2 Pipeline                              ZMQ → VR Headset
+────────────────────────────────────       ──────────────────────────────
+sensor_msgs/Image
+  (scene camera topic)
+          │
+          ▼
+  scene_image_callback()
+  CvBridge → BGR
+  _rescale_image (×1) → RGB
+          │
+          └──► rgb_viz_zmq_publisher ──► TCP port 10505 ──► Scene viewport
+
+
+component_interfaces/Hand2DPlotData
+  (handkeypoint_plot_2d topic)
+          │
+          ▼
+  hand_plot_callback()
+  CvBridge → BGR
+  _rescale_image (×4) → RGB
+          │
+          └──► hand_2d_zmq_publisher ──► TCP port 15001 ──► Overlay panel
+```
+
+---
+
+## Acknowledgements
+
+The `ZMQCompressedImageTransmitter` class are adapted from the **Open-Teach** teleoperation system:
 
 > Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
 > *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
