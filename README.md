@@ -78,7 +78,27 @@ ROS2 Humble officially targets **Ubuntu 22.04 (Jammy)**. The Docker images in th
 
 ## VR Headset Setup
 
-> 📌 **Coming soon:** This section will cover pairing and configuring the VR headset for use with the teleoperation system, including network setup, driver installation, and verifying the headset stream is reachable by the `teleop-drivers` container.
+> 📌 **For full VR headset setup instructions, see the [Open-Teach VR Setup Guide](https://github.com/aadhithya14/Open-Teach/blob/main/docs/vr.md).**
+
+### Download & Install
+
+Download and sideload [**`SingleArmBot.apk`**](https://github.com/aadhithya14/Open-Teach/tree/main/VR/APK) onto your Meta Quest headset. Follow the sideloading steps in the Open-Teach guide linked above.
+
+### Network Configuration
+
+When the app prompts for an IP address, enter the IP of the **execution platform** — the machine running the `teleop-drivers` container (i.e. the PC connected to the robot), not the headset's own IP or the development machine.
+
+### Motion Retargeting Controls
+
+Once the system is running, the right hand is tracked and mapped to the robot arm. Keep the following gestures and posture in mind during operation:
+
+| Gesture / Posture | Action |
+|-------------------|--------|
+| Thumb tip touches **pinky** tip | Toggle gripper **open / close** |
+| Thumb tip touches **middle finger** tip | **Pause** motion and reset calibration; touch again to **resume** with new origin |
+| Right hand movement (palm facing **down**) | Robot end-effector mimics hand pose |
+
+> ⚠️ Keep your **palm facing down** throughout teleoperation. The retargeting coordinate mapping assumes this orientation — other palm orientations will produce unexpected robot motion.
 
 ---
 
@@ -248,13 +268,25 @@ Expected output (per container):
 
 ## Step 6 — Deploy the Simulator
 
-> 📌 **Coming soon:** The Gazebo simulation environment requires additional setup (x86\_64 Ubuntu host, display configuration, xArm5 Gazebo model installation). A dedicated setup and deployment guide for the simulator will be added here.
->
-> In the meantime, the short version: SSH into your Ubuntu x86 machine, clone the repository there, and run:
-> ```bash
-> python3 deploy_system.py --launch-env --ros-domain-id 0
-> ```
-> The `--launch-env` flag always deploys the simulator locally on the machine where the command is run. The `hardware_id` of the simulator entry in `deployment.yaml` is not used for routing — it is only metadata.
+On your **x86 Ubuntu host**, clone the repository and run:
+```bash
+# Allow Docker containers to access the host display
+xhost +local:
+export DISPLAY=:0
+
+# Deploy the simulator container locally
+python3 deploy_system.py --launch-env --ros-domain-id 0
+```
+
+Then enter the container and launch:
+```bash
+docker exec -it <simualtor_container_name> bash
+source /root/dev_ws/install/setup.bash
+source /opt/ros/humble/setup.bash
+ros2 launch xarm_gazebo xarm5_beside_table_gazebo.launch.py
+```
+
+> ⚠️ **First-launch issue:** If you see `Waiting for spawn_entity Service` stuck in the terminal, kill the hung `gzserver` process (`ps -a | grep gzserver` → `kill -9 <PID>`) and rerun the launch file.
 
 ---
 
@@ -561,7 +593,7 @@ ros2 service call \
 
 ---
 
-## What's Next
+## What's More
 
 For more details please see the following docs.
 
@@ -569,9 +601,9 @@ For more details please see the following docs.
 - **System Manager and Component Node** - [Doc](config_files/docs/systemManager_component_node.md.md)
 - **ROS2 Interface** — [Doc](config_files/docs/ros2_interface.md)
 - **Resource Monitoring** — [Doc](config_files/docs/monitor_node.md)
-- **Latency Measurement** —  `5. Latency Measurement: End-to-End Setup Guide` in the [Doc](config_files/docs/systemManager_component_node.md.md)
+- **Latency Measurement** —  `5. Latency Measurement: End-to-End Setup Guide` in the [Doc](config_files/docs/systemManager_component_node.md)
 
-- **Data Collection** — how to configure and trigger the `data_collector` node
-- **Simulator Setup** — full Gazebo environment setup, display configuration, and xArm5 model installation on Ubuntu x86
-- **VR Headset Setup** — pairing, driver installation, and network configuration for the VR headset
-- **Package Descriptions** — what each ROS2 package does and how the nodes communicate
+- **Data Collection** — how to configure and trigger the `data_collector` node, see the guide in the [Doc](config_files/docs/data_collector.md)
+- **Components Descriptions** — what each ROS2 package, i.e. the how pipeline does, see the [Doc]((config_files/docs/components.md))
+
+- **Simulator Setup** — full Gazebo environment setup, display configuration, and xArm5 model installation on Ubuntu x86, see the [Doc](config_files/docs/xarm5_gazebo_simulation.md)
