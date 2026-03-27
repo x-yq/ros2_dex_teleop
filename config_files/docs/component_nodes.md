@@ -1,3 +1,92 @@
+# Pipeline Nodes — Overview
+
+This document summarises all ROS2 nodes in the VR teleoperation pipeline. For full per-node documentation follow the links in the table of contents. For complete topic definitions, message types, and data flow diagrams see **`ros2_interface.md`**.
+
+---
+
+## Table of Contents
+
+- [Input Sensor Driver: VRDetectorDriver Node Documentation](#input-sensor-driver-vrdetectordriver-node-documentation)
+- [Input Data Processor: VRHandKeypointProcessor Node Documentation](#input-data-processor-vrhandkeypointprocessor-node-documentation)
+- [Motion Retarget: MotionRetargetOT Node Documentation](#motion-retarget-motionretargetot-node-documentation)
+- [Robot Driver: SimXArm5Driver Node Documentation](#robot-driver-simxarm5driver-node-documentation)
+- [Feedback Data Processor: MultiFeedbackDataProcessor Node Documentation](#feedback-data-processor-multifeedbackdataprocessor-node-documentation)
+- [Feedback Projector Driver: VRDriver Node Documentation](#feedback-projector-driver-vrdriver-node-documentation)
+---
+
+## Node Summary Table
+
+| # | Node | `layer_cn_id` | Subscribed Topics | Published Topics | Role | Container |
+|---|------|--------------|-------------------|------------------|------|-----------|
+| 1 | `VRDetectorDriver` | `input_sensor_driver_vr` | — *(ZMQ input only)* | `right_hand_keypoint_raw` | Reads raw ZMQ hand data from VR headset; publishes `RawHandKeypoint` | `teleop-drivers` |
+| 2 | `VRHandKeypointProcessor` | `input_control_data_processor` | `right_hand_keypoint_raw` | `right_hand_keypoint_processed` | Transforms and smooths 24-joint hand pose into wrist-centred canonical frame | `teleop-components` |
+| 3 | `MotionRetargetOT` | `motion_retarget` | `right_hand_keypoint_processed`, `robot_state`, `gripper_state` | `robot_control_cmd`, `gripper_control_cmd` | Maps hand pose deltas to robot Cartesian commands; handles gripper and calibration gestures | `teleop-components` |
+| 4 | `MultiFeedbackDataProcessor` | `feedback_data_processor` | `right_hand_keypoint_processed` | `handkeypoint_plot_2d` | Renders real-time 2D hand skeleton plot as an image message | `teleop-components` |
+| 5 | `VRDriver` | `feedback_projector_driver` | `handkeypoint_plot_2d`, *(scene image)* | — *(ZMQ output only)* | Compresses and streams feedback images over ZMQ to the VR headset display | `teleop-drivers` |
+| 6 | `SimXArm5Driver` | `robot_driver` | `robot_control_cmd`, `gripper_control_cmd`, `/joint_states` | `robot_state`, `gripper_state` | Bridges `ControlCmd` messages to `ros2_control` Cartesian controller and trajectory action servers in Gazebo | `teleop-drivers` |
+
+> For topic message types, field definitions, and the full data flow diagram, see [**`ros2_interface.md`**](ros2_interface.md).
+
+---
+
+## Config File Format Summary
+
+All nodes follow the same YAML structure. The file **must** be named after the node's `layer_cn_id` and placed at:
+
+```
+config_files/component_node/<layer_cn_id>.yaml
+```
+
+```yaml
+layer_cn_id: <node_name>        # Must match the node's layer_cn_id exactly
+pkg_name:    <ros2_package>     # ROS2 package the node belongs to
+
+plugins:
+  - id: <plugin_id>             # Must match the id checked in _load_my_config()
+    params:
+      param_key: value          # Node-specific parameters (see per-node docs)
+```
+
+Quick reference of config files per node:
+
+| Node | Config file |
+|------|-------------|
+| `VRDetectorDriver` | `input_sensor_driver_vr.yaml` |
+| `VRHandKeypointProcessor` | `input_control_data_processor.yaml` |
+| `MotionRetargetOT` | `motion_retarget.yaml` |
+| `MultiFeedbackDataProcessor` | `feedback_data_processor.yaml` |
+| `VRDriver` | `feedback_projector_driver.yaml` |
+| `SimXArm5Driver` | `robot_driver.yaml` |
+
+---
+
+## Common Initialisation Order
+
+Every node follows the same three-phase startup sequence enforced by `ComponentNode._initialize_node()`. Understanding this order matters when extending a node or diagnosing startup errors:
+
+```
+Phase 1 — Base class chain
+  ComponentNode.__init__()
+    └── _load_root_configs()          # Loads hardware.yaml and data_stream.yaml
+                                      # into self.hardware_config / self.data_stream_config
+
+Phase 2 — Plugin configuration
+  _load_my_config()                   # Reads config_files/component_node/<layer_cn_id>.yaml
+                                      # Overwrites default attribute values from params block
+
+Phase 3 — ROS2 interface registration
+  register_pub_sub()                  # Creates publishers, subscribers, action clients
+  register_timer()                    # Creates periodic timers (if any)
+  check_plugins()                     # Verifies required methods are implemented
+```
+
+**Key implications:**
+- `self.data_stream_config` is available by the time `register_pub_sub()` runs — topic names and types are never hardcoded, always resolved from this config.
+- Nodes with no timer (`VRHandKeypointProcessor`, `MotionRetargetOT`, `MultiFeedbackDataProcessor`, `VRDriver`) leave `register_timer()` as a no-op; all processing is callback-driven.
+
+---
+---
+
 # Input Sensor Driver: VRDetectorDriver Node Documentation
 
 ## Overview
@@ -447,7 +536,7 @@ Source repository: https://github.com/aadhithya14/Open-Teach
 
 ---
 ---
-# MotionRetargetOT Node Documentation
+# Motion Retarget: MotionRetargetOT Node Documentation
 
 ## Overview
 
@@ -747,7 +836,7 @@ Source repository: https://github.com/aadhithya14/Open-Teach
 ---
 ---
 
-# SimXArm5Driver Node Documentation
+# Robot Driver: SimXArm5Driver Node Documentation
 
 ## Overview
 
@@ -1043,7 +1132,7 @@ joint_state_callback()                                        (robot_state_publi
 ---
 ---
 
-# MultiFeedbackDataProcessor Node Documentation
+# Feedback Data Processor: MultiFeedbackDataProcessor Node Documentation
 
 ## Overview
 
@@ -1239,7 +1328,7 @@ Source repository: https://github.com/aadhithya14/Open-Teach
 ---
 ---
 
-# VRDriver Node Documentation
+# Feedback Projector Driver: VRDriver Node Documentation
 
 ## Overview
 
