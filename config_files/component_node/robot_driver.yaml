@@ -4,21 +4,10 @@ layer_cn_id: robot_driver
 pkg_name: robot_driver
 simulated: True
 
-meta:
-  description: "Robot driver"
-  layer: driver
-  type: [robot_driver]
-  priority: 1
-  ros2_domain_id: None # optional
-  
-# fallback plugin
-default_plugin: sim_xarm5_driver
-
 plugins:
   - id: sim_xarm5_driver
     priority: 1
     params: # for node with plugin initialization
       freq: 90
       scale_factor: 1.0
-      default_controller: [xarm5_cartesian_motion_controller, xarm_gripper_traj_controller] # controller name for xarm5 and xarm_gripper
       joint_names: ["joint1", "joint2", "joint3", "joint4", "joint5"]

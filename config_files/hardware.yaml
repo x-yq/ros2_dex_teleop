@@ -1,52 +1,28 @@
 execution_plattforms:
   - hardware_id: mac_pc
-    execution_plattform: true # if this is a pc or server for driver or algorithm
-    ip: 192.168.50.228
-    access_port: 22
-    ports: 
-      VIZ_PORT_OFFSET: 500
-      DEPTH_PORT_OFFSET: 1000
-      cam_port_offset:  10005
-
-  - hardware_id: render_pc # feedback projector and its driver
-    execution_plattform: true # if this is a pc or server for driver or algorithm
-    ip:  192.168.1.100
-    access_port: 22
-
-  - hardware_id: jetson # feedback sensor driver
     execution_plattform: true
-    ip: 192.168.50.107
-    access_port: 22
+    ip: 192.168.178.92 #192.168.50.228
+    ssh_user: # don't upload to the git repo
+    ssh_password: # don't upload to the git repo
 
-  - hardware_id: pi4-197
+  - hardware_id: ubuntu 
     execution_plattform: true
-    ip: 192.168.1.197
-    access_port: 22
-    ports: 
-      VIZ_PORT_OFFSET: 500
-      DEPTH_PORT_OFFSET: 1000
-      cam_port_offset:  10005
+    ip:  192.168.178.50
+    ssh_user: # don't upload to the git repo
+    ssh_password: # don't upload to the git repo
 
-sensors:
+sensors: # example, not actually used in the scenario
 
-  - hardware_id: rococo # input sensor
+  - hardware_id: vr_headset
     execution_plattform: false
     driver_layer_cn_id: sensor_driver_rococo
     ip: 192.168.1.103
-    access_port: 22
 
-  - hardware_id: realsense # feedback sensor
-    execution_plattform: false
-    driver_layer_cn_id: sensor_driver_realsense
-    ip: 192.168.1.101
-    access_port: 22
-
-robots:
+robots: # example, not actually used in the scenario
   - hardware_id: xarm5_robot
     execution_plattform: false
     driver_layer_cn_id: xarm5_robot
     ip: 192.168.1.108
-    access_port: 22
 
 
 

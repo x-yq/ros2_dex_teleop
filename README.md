@@ -1,93 +1,609 @@
-# teleop_dev
+# xArm5 Teleoperation System — Usage Guide
 
+> **Note:** This document is a work in progress. Future sections will cover individual package descriptions, resource usage monitoring, latency measurement, data collection, and system start/pause control via ROS2 service calls. For now this guide focuses on getting the system deployed and running.
 
+---
 
-## Getting started
+## Overview
 
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
+This repository contains a complete xArm5 teleoperation system built on ROS2 Humble. The system consists of four Docker containers plus two peripheral devices:
 
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
+- **`teleop-system`, `teleop-components`, `teleop-drivers`** — the three core teleop containers. These can run on **any linux machine** (Linux, x86\_64 or arm64) that meets the prerequisites. They do not have to be on the same machine — you can spread them across multiple PCs by adjusting `hardware.yaml` and `deployment.yaml`.
+- **`simulator` (Gazebo)** — must run on an **x86\_64 Ubuntu machine** due to Gazebo's architecture dependency. This is the only container with a hardware constraint.
+- **VR Headset** and **xArm5 Robot** — peripheral devices connected over the network; they do not run containers.
 
-## Add your files
+All configuration files, Dockerfiles, launch files, and ROS2 packages are pre-configured. You only need to clone the repository, fill in your machine IPs and SSH credentials, and run the deployment script.
 
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/topics/git/add_files/#add-files-to-a-git-repository) or push an existing Git repository with the following command:
+### System Architecture
+
+The diagram below shows one common layout — all three teleop containers on one PC and the simulator on a separate x86 Ubuntu machine. You can redistribute the teleop containers across different machines by editing `deployment.yaml`.
 
 ```
-cd existing_repo
-git remote add origin https://git.tu-berlin.de/shuai_ws/students/yeqiao_ws/teleop_dev.git
-git branch -M main
-git push -uf origin main
+Your PC (Linux, any arch)              Ubuntu x86 PC
+┌────────────────────────┐              ┌─────────────────────────┐
+│  teleop-system         │              │  simulator (Gazebo)     │
+│  ├─ system_manager     │◄────────────►│  ├─ simulation_monitor  │
+│  └─ data_collector     │   ROS2 DDS   │  └─ xarm_gazebo         │
+├────────────────────────┤   (host net) └─────────────────────────┘
+│  teleop-components     │
+│  ├─ input_processor    │
+│  ├─ motion_retarget    │
+│  └─ feedback_processor │
+├────────────────────────┤              xArm5 Robot
+│  teleop-drivers        │◄────────────  192.168.x.x
+│  ├─ vr_headset_driver  │              VR Headset
+│  └─ xarm5_driver       │◄────────────  192.168.x.x
+└────────────────────────┘
+
+Note: teleop-system, teleop-components, and teleop-drivers can each
+      run on different machines — the simulator is the only container
+      with a strict x86_64 Ubuntu requirement.
 ```
 
-## Integrate with your tools
+---
 
-- [ ] [Set up project integrations](https://git.tu-berlin.de/shuai_ws/students/yeqiao_ws/teleop_dev/-/settings/integrations)
+## Prerequisites
 
-## Collaborate with your team
+### Hardware Requirements
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/user/project/merge_requests/auto_merge/)
+| Container | Can run on | OS | Architecture |
+|---|---|---|---|
+| `teleop-system` | Any machine of your choice | Linux | x86\_64 or arm64 |
+| `teleop-components` | Any machine of your choice | Linux | x86\_64 or arm64 |
+| `teleop-drivers` | Any machine of your choice | Linux | x86\_64 or arm64 |
+| `simulator` | **Dedicated x86 Ubuntu machine** | **Ubuntu 22.04** | **x86\_64 only** |
 
-## Test and Deploy
+> **Flexibility:** The three teleop containers have no hardware constraints — you can run all of them on a single laptop, or split them across multiple machines. To change which machine a container runs on, update the `hardware_id` field for that container in `deployment.yaml` and add the machine to `hardware.yaml`.
 
-Use the built-in continuous integration in GitLab.
+> **Why x86 for Gazebo?** The Gazebo simulation container and its ROS2 Humble packages are built for x86\_64. Running on arm64 is not supported for the simulator container.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### Software Requirements (both machines)
 
-***
+- Docker Engine ≥ 24.0 and Docker Compose ≥ 2.20
+- Python 3.8+
+- `sshpass` (for password-based SSH from the deployment machine): `sudo apt install sshpass` or `brew install hudochenkov/sshpass/sshpass`
+- `rsync` (usually pre-installed): `sudo apt install rsync`
 
-# Editing this README
+### Network Requirements
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
+- Both machines must be on the **same local network** (or VPN) so ROS2 DDS traffic can flow freely between them
+- The VR headset and xArm5 robot must also be reachable from the primary PC on the same network
+- All machines must use the **same `ROS_DOMAIN_ID`** (default: `0` — change this if other ROS2 systems are running on your network)
 
-## Suggestions for a good README
+### Ubuntu Version Compatibility
 
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
+ROS2 Humble officially targets **Ubuntu 22.04 (Jammy)**. The Docker images in this repository are built on `ros:humble-ros-base` which is Ubuntu 22.04-based. You do not need Ubuntu 22.04 on the host machine itself — Docker handles the OS layer
 
-## Name
-Choose a self-explaining name for your project.
+---
 
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
+## VR Headset Setup
 
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
+> 📌 **For full VR headset setup instructions, see the [Open-Teach VR Setup Guide](https://github.com/aadhithya14/Open-Teach/blob/main/docs/vr.md).**
 
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
+### Download & Install
 
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
+Download and sideload [**`SingleArmBot.apk`**](https://github.com/aadhithya14/Open-Teach/tree/main/VR/APK) onto your Meta Quest headset. Follow the sideloading steps in the Open-Teach guide linked above.
 
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
+### Network Configuration
 
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
+When the app prompts for an IP address, enter the IP of the **execution platform** — the machine running the `teleop-drivers` container (i.e. the PC connected to the robot), not the headset's own IP or the development machine.
 
-## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
+### Motion Retargeting Controls
 
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
+Once the system is running, the right hand is tracked and mapped to the robot arm. Keep the following gestures and posture in mind during operation:
 
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
+| Gesture / Posture | Action |
+|-------------------|--------|
+| Thumb tip touches **pinky** tip | Toggle gripper **open / close** |
+| Thumb tip touches **middle finger** tip | **Pause** motion and reset calibration; touch again to **resume** with new origin |
+| Right hand movement (palm facing **down**) | Robot end-effector mimics hand pose |
 
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
+> ⚠️ Keep your **palm facing down** throughout teleoperation. The retargeting coordinate mapping assumes this orientation — other palm orientations will produce unexpected robot motion.
 
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+---
 
-## License
-For open source projects, say how it is licensed.
+## Step 1 — Clone the Repository
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.
+Clone the repository on **both machines** (the primary PC and the simulation PC). The deployment script will sync the repo automatically to remote machines, but it is still recommended to clone manually on both so you can inspect and edit config files locally.
+
+```bash
+git clone <repository-url>
+cd <repository-name>
+```
+
+On the simulation PC (Ubuntu x86), you only need the repository present — the deployment script handles starting the container remotely from your primary machine.
+
+---
+
+## Step 2 — Configure `hardware.yaml`
+
+Open `config_files/hardware.yaml`. This file contains the network addresses and SSH credentials for every machine in the system.
+
+**Find your IP addresses:**
+```bash
+ip addr show | grep "inet " | grep -v 127.0.0.1
+```
+
+Fill in the values for your environment. Replace every `<...>` placeholder:
+
+```yaml
+execution_plattforms:
+
+  - hardware_id: mac_pc
+    execution_plattform: true
+    ip: <your-primary-PC-IP>        # e.g. 192.168.1.45
+    ssh_user: <your-username>        # Linux: whoami
+    ssh_password: <your-password>
+
+  - hardware_id: ubuntu
+    execution_plattform: true
+    ip: <your-ubuntu-x86-PC-IP>     # e.g. 192.168.1.72
+    ssh_user: <ubuntu-username>
+    ssh_password: <ubuntu-password>
+
+sensors:
+  - hardware_id: vr_headset
+    execution_plattform: false
+    driver_layer_cn_id: sensor_driver_rococo
+    ip: <your-VR-headset-IP>         # e.g. 192.168.1.103
+
+robots:
+  - hardware_id: xarm5_robot
+    execution_plattform: false
+    driver_layer_cn_id: xarm5_robot
+    ip: <your-xarm5-robot-IP>        # e.g. 192.168.1.108
+```
+
+> ⚠️ **Never commit this file with credentials filled in.** Add `config_files/hardware.yaml` to your `.gitignore`, or clear the credential fields before pushing.
+
+---
+
+## Step 3 — Verify and Adjust `deployment.yaml`
+
+`config_files/deployment.yaml` maps each container to a machine via `hardware_id`. The default configuration places all three teleop containers on a single machine (`mac_pc`) and the simulator on the `ubuntu` machine:
+
+```yaml
+platforms:
+  - hardware_id: mac_pc
+    containers:
+      - name: teleop-system
+        node_count: 3
+
+  - hardware_id: mac_pc
+    containers:
+      - name: teleop-components
+        node_count: 3
+
+  - hardware_id: mac_pc
+    containers:
+      - name: teleop-drivers
+        node_count: 4
+
+  - hardware_id: ubuntu
+    containers:
+      - name: simulator
+        simulator_name: gazebo
+        robot: xarm5
+        eef: xarm_gripper
+```
+
+**If you want to run the teleop containers on different machines**, change the `hardware_id` for each container to match an entry you have defined in `hardware.yaml`. For example, to move `teleop-drivers` to a second machine registered as `ubuntu_pc2`:
+
+```yaml
+  - hardware_id: ubuntu_pc2      # ← changed from mac_pc
+    containers:
+      - name: teleop-drivers
+        node_count: 4
+```
+
+Then add `ubuntu_pc2` to `hardware.yaml` with its IP and SSH credentials. The `simulator` container's `hardware_id` in `deployment.yaml` is ignored at deploy time — the simulator always deploys locally on whichever machine runs `deploy_system.py --launch-env` — so you do not need to change it.
+
+---
+
+## Step 4 — Verify Network Connectivity
+
+Before deploying, confirm that your primary PC can reach all other machines:
+
+```bash
+# Ping the simulation PC
+ping <your-ubuntu-x86-PC-IP>
+
+# Ping the robot
+ping <your-xarm5-robot-IP>
+
+# Test SSH access to the simulation PC (enter password when prompted)
+ssh <ubuntu-username>@<your-ubuntu-x86-PC-IP>
+```
+
+Also verify that Docker is running on both machines:
+
+```bash
+# Local
+docker info
+
+# Remote (via SSH)
+ssh <ubuntu-username>@<your-ubuntu-x86-PC-IP> "docker info"
+```
+
+---
+
+## Step 5 — Deploy the Teleop Containers
+
+Run the deployment script from the repository root on your **primary PC**. This will SSH into the machines defined in `hardware.yaml`, sync the repository, build the Docker images, and start the containers.
+
+```bash
+# Deploy all non-simulator containers (teleop-system, teleop-components, teleop-drivers)
+python3 deploy_system.py --ros-domain-id 0
+```
+
+The script will:
+1. SSH into the primary PC (or run locally if `--local-mode` is set)
+2. Sync the repository to the remote machine via `rsync`
+3. Run `docker compose up -d` for each container in sequence
+4. Print container logs (last 10 lines) after each successful start
+
+**If you are running everything on a single machine** (no remote deployment), add `--local-mode`:
+
+```bash
+python3 deploy_system.py --ros-domain-id 0 --local-mode
+```
+
+**If the remote machine already has the repository** from a previous run and you want to force a fresh sync:
+
+```bash
+python3 deploy_system.py --ros-domain-id 0 --force-update
+```
+
+Expected output (per container):
+```
+--- Deploying container: teleop-system ---
+✓ Successfully deployed container: teleop-system
+--- Deploying container: teleop-components ---
+✓ Successfully deployed container: teleop-components
+--- Deploying container: teleop-drivers ---
+✓ Successfully deployed container: teleop-drivers
+```
+
+---
+
+## Step 6 — Deploy the Simulator
+
+On your **x86 Ubuntu host**, clone the repository and run:
+```bash
+# Allow Docker containers to access the host display
+xhost +local:
+export DISPLAY=:0
+
+# Deploy the simulator container locally
+python3 deploy_system.py --launch-env --ros-domain-id 0
+```
+
+Then enter the container and launch:
+```bash
+docker exec -it <simualtor_container_name> bash
+source /root/dev_ws/install/setup.bash
+source /opt/ros/humble/setup.bash
+ros2 launch xarm_gazebo xarm5_beside_table_gazebo.launch.py
+```
+
+> ⚠️ **First-launch issue:** If you see `Waiting for spawn_entity Service` stuck in the terminal, kill the hung `gzserver` process (`ps -a | grep gzserver` → `kill -9 <PID>`) and rerun the launch file.
+
+---
+
+## Step 7 — Verify All Containers Are Running
+
+Check that all four containers are up on their respective machines:
+
+```bash
+# On the primary PC
+docker ps --format "table {{.Names}}\t{{.Status}}"
+
+# Expected output:
+# NAMES                STATUS
+# teleop-system        Up X minutes
+# teleop-components    Up X minutes
+# teleop-drivers       Up X minutes
+
+# On the Ubuntu x86 machine
+docker ps --format "table {{.Names}}\t{{.Status}}"
+# NAMES                STATUS
+# simulator            Up X minutes
+```
+
+If a container shows `Restarting` or `Exited`, inspect its logs:
+
+```bash
+docker logs --tail 50 <container-name>
+```
+
+---
+
+## Step 8 — Launch ROS2 Nodes
+
+Containers start with `tail -f /dev/null` and do not run any ROS2 nodes automatically. You must exec into each container and run the appropriate launch command.
+
+Open a separate terminal for each container:
+
+**Terminal 1 — System Manager** (on primary PC):
+```bash
+docker exec -it teleop-system bash
+ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=0
+```
+
+**Terminal 2 — Component Nodes** (on primary PC):
+```bash
+docker exec -it teleop-components bash
+ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=0
+```
+
+**Terminal 3 — Driver Nodes** (on primary PC):
+```bash
+docker exec -it teleop-drivers bash
+ros2 launch teleop_launcher driver_nodes.launch.py ros_domain_id:=0
+```
+
+**Terminal 4 — Simulator** (on Ubuntu x86 machine):
+> 📌 **Coming soon** — see Step 6.
+
+After launching all nodes, verify they are visible on the ROS2 network from any container:
+
+```bash
+# Inside any running container
+ros2 node list
+```
+
+You should see all nodes including the monitor nodes and all component and driver nodes.
+
+---
+
+## Step 9.1 — Start / Pause the System
+
+The system is controlled via the `/system_control` service, which broadcasts lifecycle commands to all registered component nodes simultaneously.
+
+**Start the system:**
+```bash
+ros2 service call \
+  /system_control \
+  system_interfaces/srv/SystemControl \
+  "{description: 'start'}"
+```
+
+**Pause the system:**
+```bash
+ros2 service call \
+  /system_control \
+  system_interfaces/srv/SystemControl \
+  "{description: 'pause'}"
+```
+
+**Emergency stop** (immediately halts all components and sets them to `disconnected`):
+```bash
+ros2 service call \
+  /system_control \
+  system_interfaces/srv/SystemControl \
+  "{description: 'urgent_stop'}"
+```
+
+A successful response looks like:
+```
+success: true
+system_state: running        # or 'ready' after pause
+message: "..."
+```
+
+---
+
+## Step 9.2 — Start / Stop Monitoring
+
+Each container has a dedicated monitor node. You must call `start_monitor` on each one individually **before** starting the system, and `stop_monitor` **after** pausing it. Both services require the **full** Docker container ID (not the short hash).
+
+**Get full container IDs first:**
+```bash
+docker ps --no-trunc --format "table {{.Names}}\t{{.ID}}"
+```
+
+**Start all monitors:**
+```bash
+ros2 service call /monitor_ubuntu_simulator/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_system/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_drivers/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_components/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['']}"
+```
+
+**Stop all monitors** (this triggers metric computation and flushes logs):
+```bash
+ros2 service call /monitor_ubuntu_simulator/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_system/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_drivers/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+
+ros2 service call /monitor_ubuntu_teleop_components/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['']}"
+```
+
+> ⚠️ **Order matters:** Always start monitors *before* starting the system, and stop monitors *after* pausing it. Stopping a monitor immediately flushes and closes the stats stream — any metrics collected after that point will be lost.
+
+> 📄 KPI logs are written to `/log/monitor_<container_id>.log` inside the monitor's container. For the full recommended sequence, see `monitor_test.bash`.
+
+---
+
+
+## Step 9.3 — Start / Stop Data Collection
+
+> 📌 **Coming soon:** Detailed instructions for starting and pausing the teleoperation session via ROS2 service calls will be added here once the service interface is finalized.
+
+---
+
+## Step 10 — Stop the System
+
+### Stop ROS2 Nodes
+
+In each terminal running a launch file, press `Ctrl+C` to gracefully shut down the nodes. Then exit the container:
+
+```bash
+exit
+```
+
+### Stop Containers
+
+To stop all teleop containers on the primary PC:
+
+```bash
+python3 deploy_system.py --stop --ros-domain-id 0
+```
+
+To stop the simulator container (run on the Ubuntu x86 machine):
+
+```bash
+python3 deploy_system.py --launch-env --stop
+```
+
+Or stop containers directly with Docker:
+
+```bash
+docker stop teleop-system teleop-components teleop-drivers
+docker stop simulator
+```
+
+---
+
+<!-- ## Troubleshooting
+
+### Container fails to start
+
+```bash
+docker logs --tail 100 <container-name>
+```
+
+Common causes: missing volume paths (e.g. `/tmp/argus_socket` does not exist yet — create it with `mkdir -p /tmp/argus_socket`), or Docker image build failure during first run.
+
+### ROS2 nodes cannot see each other across machines
+
+- Confirm all machines use the same `ROS_DOMAIN_ID`
+- Confirm `network_mode: host` is set in `docker-compose.yaml` for all services
+- Check that no firewall is blocking UDP multicast traffic between the machines:
+  ```bash
+  sudo ufw status
+  # If active, allow ROS2 DDS ports:
+  sudo ufw allow 7400:7500/udp
+  ```
+- Try pinging between containers using host IPs to confirm basic connectivity
+
+### SSH deployment fails
+
+- Verify `sshpass` is installed on the machine running `deploy_system.py`
+- Double-check the `ip`, `ssh_user`, and `ssh_password` values in `hardware.yaml`
+- Test SSH manually: `ssh <user>@<ip>`
+- If using key-based auth instead of a password, leave `ssh_password` blank and ensure your key is loaded in `ssh-agent`
+
+### Simulator container fails to open Gazebo window
+
+- Ensure `DISPLAY` is set correctly on the Ubuntu x86 host: `echo $DISPLAY`
+- Run `xhost +local:docker` on the host before starting the container
+- Verify the host is x86\_64: `uname -m` (must output `x86_64`)
+
+### `docker compose` not found (vs `docker-compose`)
+
+The deployment script uses the modern `docker compose` (with a space, Docker Compose V2). If your system has the older `docker-compose` binary instead, upgrade Docker Engine or install the Compose plugin:
+
+```bash
+sudo apt install docker-compose-plugin
+``` -->
+
+---
+
+## Quick Reference
+
+### Deployment
+
+```bash
+# ── Deploy ────────────────────────────────────────────────────────────
+# Deploy teleop containers (remote)
+python3 deploy_system.py --ros-domain-id 0
+
+# Deploy teleop containers (local machine only)
+python3 deploy_system.py --ros-domain-id 0 --local-mode
+
+# Deploy simulator — run on Ubuntu x86 machine (see Step 6 for full setup)
+python3 deploy_system.py --launch-env --ros-domain-id 0
+
+# Force re-sync repo to remote before deploying
+python3 deploy_system.py --ros-domain-id 0 --force-update
+
+# ── Launch nodes (inside each container) ────────────────────────────
+docker exec -it teleop-system     bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher system_manager.launch.py ros_domain_id:=0"
+docker exec -it teleop-components bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher component_nodes.launch.py ros_domain_id:=0"
+docker exec -it teleop-drivers    bash -c "source /opt/ros/humble/setup.bash && source /root/dev_ws/install/setup.bash && ros2 launch teleop_launcher driver_nodes.launch.py ros_domain_id:=0"
+# simulator launch — coming soon, see Step 6
+
+# ── Stop ─────────────────────────────────────────────────────────────
+python3 deploy_system.py --stop
+python3 deploy_system.py --launch-env --stop
+```
+
+### Monitoring
+
+```bash
+# Show name alongside full ID
+docker ps --no-trunc --format "table {{.Names}}\t{{.ID}}"
+
+# Start monitor for one container
+ros2 service call \
+  /<monitor_node_name>/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['<full_container_id>']}"
+
+## Example
+ros2 service call \
+  /monitor_ubuntu_simulator/start_monitor \
+  system_interfaces/srv/StartMonitor \
+  "{container_ids: ['f962a026f2e1049d7fc4770703f3f742ecde8c7c18e49e721d8755f8ceee2429']}"
+
+# Stop monitor for one container
+ros2 service call \
+  /<monitor_node_name>/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['<full_container_id>']}"
+
+## Example
+ros2 service call \
+  /monitor_ubuntu_simulator/stop_monitor \
+  system_interfaces/srv/StopMonitor \
+  "{container_ids: ['f962a026f2e1049d7fc4770703f3f742ecde8c7c18e49e721d8755f8ceee2429']}"
+```
+
+---
+
+## What's More
+
+For more details please see the following docs.
+
+- **Config and deploy a new teleoperation system using this framework** - [Doc](config_files/docs/config_deploy.md)
+- **System Manager and Component Node** - [Doc](config_files/docs/systemManager_component_node.md.md)
+- **ROS2 Interface** — [Doc](config_files/docs/ros2_interface.md)
+- **Resource Monitoring** — [Doc](config_files/docs/monitor_node.md)
+- **Latency Measurement** —  `5. Latency Measurement: End-to-End Setup Guide` in the [Doc](config_files/docs/systemManager_component_node.md)
+
+- **Data Collection** — how to configure and trigger the `data_collector` node, see the guide in the [Doc](config_files/docs/data_collector.md)
+- **Components Descriptions** — what each ROS2 package, i.e. the how pipeline does, see the [Doc]((config_files/docs/components.md))
+
+- **Simulator Setup** — full Gazebo environment setup, display configuration, and xArm5 model installation on Ubuntu x86, see the [Doc](config_files/docs/xarm5_gazebo_simulation.md)

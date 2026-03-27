@@ -25,8 +25,6 @@ class SensorDriverBase(ComponentNode, ABC):
         self.my_config: Dict[str, Any] = {}
         self.hardware_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
-
-        self.sensor_config = {}
         
         self._initialize_node() # definded in the ComponentNode
 

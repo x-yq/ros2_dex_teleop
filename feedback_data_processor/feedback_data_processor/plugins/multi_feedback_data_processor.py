@@ -28,6 +28,37 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 
 class PlotHand2D():
+    """
+    Stateful Matplotlib renderer for a 2D skeletal hand visualisation.
+ 
+    Creates a single persistent figure and Agg canvas at construction time
+    and reuses them on every call to :meth:`draw`, avoiding repeated
+    figure-creation overhead at high callback rates. On each call the axes
+    are cleared, the 24-joint skeleton is drawn using the Oculus joint index
+    convention, and an optional thumb constraint polygon is overlaid. The
+    figure is rendered to an in-memory RGBA buffer and returned as an RGB
+    NumPy array (shape ``(H, W, 3)``, dtype ``uint8``).
+ 
+    Coordinate inputs are expected in the wrist-centred, rotation-normalised
+    frame produced by ``VRHandKeypointProcessor``, so the output is stable
+    regardless of the operator's global hand position or orientation.
+ 
+    **Axis convention:**
+ 
+    - X axis: index → pinky direction (lateral), range ``[−0.12, 0.12]`` m
+    - Y axis: palm upward direction, range ``[−0.02, 0.20]`` m
+ 
+    **Output size:** 360 × 360 pixels (6 in × 60 DPI, BGR8 after conversion).
+ 
+    .. note::
+        This class is adapted from the Open-Teach teleoperation system:
+ 
+        | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+        | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+        | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+        |
+        | Source: https://github.com/aadhithya14/Open-Teach
+    """
     def __init__(self):
         # Create figure and canvas once
         self.fig = plt.figure(figsize=(6, 6), dpi=60)

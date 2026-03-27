@@ -23,17 +23,17 @@ class MotionRetargetBase(ComponentNode, ABC):
         self.static_transforms_cache: Dict[tuple, Any] = {}
 
         self.my_config: Dict[str, Any] = {}
-        self.calibration_config: Dict[str, Any] = {}
+        # self.calibration_config: Dict[str, Any] = {}
         self.data_stream_config: Dict[str, Any] = {}
 
         self._initialize_node() # definded in the ComponentNode
 
     def _load_root_configs(self):
         
-        # Load calibration configuration
-        self.calibration_config = self.load_calibration_config()
-        if self.calibration_config:
-            self.get_logger().info("Loaded calibration config")
+        # # Load calibration configuration
+        # self.calibration_config = self.load_calibration_config()
+        # if self.calibration_config:
+        #     self.get_logger().info("Loaded calibration config")
         
         # Load data stream configuration
         self.data_stream_config = self.load_data_stream_config()

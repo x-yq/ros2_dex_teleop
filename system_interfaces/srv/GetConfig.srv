@@ -1,3 +1,4 @@
+# GetConfig.srv
 # Request
 string layer_cn_id
 string config_file_name

@@ -3,19 +3,7 @@
 layer_cn_id: feedback_data_processor ## must be node name
 pkg_name: feedback_data_processor ## ros2 pkg name
 
-meta:
-  description: "Process the feedback data"
-  layer: algorithm
-  type: ["feedback_data"] # input_data or feedback_data
-  priority: 1
-  ros2_domain_id: None # optional
-  
-# fallback plugin
-default_plugin: multi_feedback
-
 plugins:
   - id: multi_feedback
-    _target_: feedback_data_processor.feedback_data_processor.plugins.multi_feedback_data_processor.MultiFeedbackDataProcessor
-    priority: 1
     params: # for node with plugin initialization
-      types: ["hand_2d_plot", "scene_img", "robot_state_plot"]
+      types: ["hand_2d_plot"]

@@ -2,23 +2,12 @@
 layer_cn_id: input_sensor_driver_vr
 pkg_name: input_sensor_driver
 
-meta:
-  description: "Capture and process vr gloves sensor input"
-  layer: driver
-  type: [input_sensor] # input_sensor or feedback_sensor, could be both
-  priority: 1
-  ros2_domain_id: None # optional
-  
-# fallback plugin
-default_plugin: vr_detector_driver
-
 plugins:
   - id: vr_detector_driver
-    priority: 1
     params: # for node with plugin initialization
       freq: 90
       # simulate_latency: 100
-      execution_platform_ip: 192.168.178.54 # 192.168.64.3 # 192.168.50.228
+      execution_platform_ip: 192.168.178.92 # 192.168.64.3 # 192.168.50.228
       left_hand_port: 8110
       right_hand_port: 8087
       button_port: 8095

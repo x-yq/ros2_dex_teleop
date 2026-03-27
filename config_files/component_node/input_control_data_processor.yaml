@@ -2,39 +2,7 @@
 layer_cn_id: input_control_data_processor ## must be node name
 pkg_name: input_data_processor ## ros2 pkg name
 
-meta:
-  description: "Process the input raw keypoint data"
-  layer: algorithm
-  type: [input_data] # input_data or feedback_data
-  priority: 1
-  ros2_domain_id: None # optional
-  
-# fallback plugin
-default_plugin: vr_handkeypoint_processor
-
 plugins:
   - id: vr_handkeypoint_processor
-    priority: 1
     params: # for node with plugin initialization
-      frequency: 90
-      # simulate_latency: 100
-
-
-  # - id: fish_eye_driver
-  #   _target_: my_pkg.sensor_drivers.FishEyeCamera
-  #   priority: 2
-  #   params:
-  #     cam_ids: [24, 26] 
-  #     width: 640
-  #     height: 480
-  #     fps: 30
-
-  # - id: robot_cam
-  #   _target_: my_pkg.sensor_drivers.RoboCamera
-  #   priority: 3
-  #   params:
-  #     width: 640
-  #     height: 480
-  #     fps: 30
-  #     robot_cam_serial_numbers: ['141722071999', '138422075648', '023422073116']
-
+      moving_average_limit: 5

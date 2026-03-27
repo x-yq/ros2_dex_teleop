@@ -3,23 +3,11 @@
 layer_cn_id: feedback_projector_driver ## must be node name
 pkg_name: feedback_projector_driver ## ros2 pkg name
 
-meta:
-  description: "Project or vizualize feedback data"
-  layer: driver
-  type: [feedback_projector] # input_device or feedback_projector, could be both
-  priority: 1
-  ros2_domain_id: None # optional
-  
-# fallback plugin
-default_plugin: vr_driver
-
 plugins:
   - id: vr_driver 
-    priority: 1
     params: # for node with plugin initialization
       width: 640
       height: 480
-      execution_platform_ip: 192.168.178.54 # 192.168.64.3 # 192.168.50.228
+      execution_platform_ip: 192.168.178.92 # 192.168.64.3 # 192.168.50.228
       vr_cam_port: 10505
       vr_graph_port: 15001
-      freq: 60

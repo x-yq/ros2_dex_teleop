@@ -56,7 +56,7 @@ class VRDetectorDriver(SensorDriverBase):
                         self.right_hand_port = plugin_params.get("right_hand_port", self.right_hand_port)
                         self.button_port = plugin_params.get("button_port", self.button_port)
 
-                        # self.freq = plugin_params.get("freq", self.freq)
+                        self.freq = plugin_params.get("freq", self.freq)
                         self.simulate_latency = plugin_params.get("simulate_latency", self.simulate_latency)
                         self.get_logger().info(f"Loaded VRDriver config: {self.freq}Hz")
                         break
@@ -95,6 +95,24 @@ class VRDetectorDriver(SensorDriverBase):
             self.handle_error("Error during pub/sub registration: ", e)
 
     def _register_zmq_sub(self):
+        """
+        Bind ZMQ PULL sockets for receiving VR sensor data streams.
+ 
+        Creates three PULL sockets (with CONFLATE=1 to retain only the latest
+        message) bound to the configured execution platform IP and ports:
+          - reset_socket:               receives reset/stop signals
+          - raw_keypoint_right_socket:  receives right-hand keypoint stream
+          - button_keypoint_socket:     receives button feedback
+ 
+        .. note::
+            This method is adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """
         self.get_logger().warn('Registering zmq sub for vr detector!!!')
         self.reset_socket = self.create_pull_socket(self.execution_platform_ip, self.reset_port)
         self.raw_keypoint_right_socket = self.create_pull_socket(self.execution_platform_ip, self.right_hand_port)
@@ -141,7 +159,36 @@ class VRDetectorDriver(SensorDriverBase):
             self.handle_error(f"Error stopping sensor {sensor_id}: ", e)
             return False
 
-    def _extract_data_from_token(self, token):        
+    def _extract_data_from_token(self, token):
+        """
+        Parse a raw ZMQ byte token into a structured keypoint dictionary.
+ 
+        The expected token format is::
+ 
+            <mode>:<x1>,<y1>,<z1>|<x2>,<y2>,<z2>|...
+ 
+        where ``<mode>`` is either ``absolute`` (maps to ``0``) or any other
+        prefix (maps to ``1`` for relative). The returned dictionary has the
+        form::
+ 
+            { "keypoints": [mode, x1, y1, z1, x2, y2, z2, ...] }
+ 
+        Args:
+            token (bytes): Raw bytes received from a ZMQ PULL socket.
+ 
+        Returns:
+            dict: Dictionary with a ``"keypoints"`` key containing a flat list
+                  of floats prefixed by the mode integer.
+ 
+        .. note::
+            This method is adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """        
         data = token.decode().strip()
         information = dict()
         keypoint_vals = [0] if data.startswith('absolute') else [1]
@@ -177,7 +224,31 @@ class VRDetectorDriver(SensorDriverBase):
         return msg
 
     def stream(self):
-        """Main streaming function - called by timer."""
+        """
+        Main timer callback — read ZMQ sockets, parse data, and publish ROS2 messages.
+ 
+        Called at ``self.freq`` Hz by the ROS2 timer registered in
+        :meth:`register_timer`. On each invocation the method:
+ 
+        1. Returns immediately if ``self.sensor_active`` is ``False``.
+        2. Blocks on ``.recv()`` for all three ZMQ sockets (right-hand keypoints,
+           reset signal, button feedback).
+        3. Parses the right-hand token via :meth:`_extract_data_from_token` and
+           builds a :class:`RawHandKeypoint` message via
+           :meth:`_create_raw_hand_keypoint_msg`.
+        4. Publishes the message to the ``right_hand_keypoint_raw`` topic.
+        5. Interprets the reset signal: ``b'Low'`` → ``0`` (stop), anything
+           else → ``1`` (continue).
+ 
+        .. note::
+            This method is adapted from the Open-Teach teleoperation system:
+ 
+            | Iyer, A., Peng, Z., Dai, Y., Guzey, I., Haldar, S., Chintala, S., & Pinto, L. (2024).
+            | *OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation.*
+            | arXiv:2403.07870 [cs.RO]. https://arxiv.org/abs/2403.07870
+            |
+            | Source: https://github.com/aadhithya14/Open-Teach
+        """
         if not self.sensor_active:
             return
 

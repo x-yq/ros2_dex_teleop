@@ -2,6 +2,8 @@ __pycache__/
 
 *.log
 
+replacements.txt
+
 __pypackages__/
 
 **/.DS_Store
