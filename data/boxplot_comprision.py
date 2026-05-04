@@ -273,7 +273,7 @@ def main():
         data_structure,
         metric='cpu_percent',
         ylabel='CPU Usage (%)',
-        filename='cpu_usage_boxplot.png'
+        filename='cpu_usage_boxplot_comprision.png'
     )
     
     # Create Memory boxplot
@@ -281,7 +281,7 @@ def main():
         data_structure,
         metric='mem_process_mib',
         ylabel='Memory Usage (MiB)',
-        filename='memory_usage_boxplot.png'
+        filename='memory_usage_boxplot_comprision.png'
     )
     
     print("\nVisualization complete!")

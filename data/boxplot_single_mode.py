@@ -177,7 +177,8 @@ def create_grouped_boxplot(data, metric, ylabel, title, filename):
 
 def main():
     # Configuration
-    data_folder = '/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/resource_usage_final'  # Change this to your data folder path
+    mode = "distributed2"
+    data_folder = f'/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/{mode}/resource_usage_final'  # Change this to your data folder path
     subfolders = [
         'monitor_30hz_r1', 'monitor_30hz_r2', 'monitor_30hz_r3',
         'monitor_60hz_r1', 'monitor_60hz_r2', 'monitor_60hz_r3',
@@ -204,8 +205,8 @@ def main():
         df, 
         'cpu_percent', 
         'CPU Usage (%)', 
-        'CPU Usage by Container and Frequency',
-        f'{data_folder}/cpu_usage_boxplot.png'
+        f'CPU Usage by Container and Frequency of Mode {mode.capitalize()}',
+        f'{data_folder}/cpu_usage_boxplot_{mode}.png'
     )
     
     # Memory process boxplot
@@ -213,8 +214,8 @@ def main():
         df, 
         'mem_process_mib', 
         'Memory Usage (MiB)', 
-        'Memory Usage by Container and Frequency',
-        f'{data_folder}/memory_usage_boxplot.png'
+        f'Memory Usage by Container and Frequency of Mode {mode.capitalize()}',
+        f'{data_folder}/memory_usage_boxplot_{mode}.png'
     )
     
     print("\nVisualization complete!")
