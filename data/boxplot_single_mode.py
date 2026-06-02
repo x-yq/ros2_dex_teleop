@@ -177,10 +177,10 @@ def create_grouped_boxplot(data, metric, ylabel, title, filename):
 
 def main():
     # Configuration
-    mode = "distributed2"
+    mode = "centered"
     data_folder = f'/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/{mode}/resource_usage_final'  # Change this to your data folder path
     subfolders = [
-        'monitor_30hz_r1', 'monitor_30hz_r2', 'monitor_30hz_r3',
+        'monitor_30hz_r2', 'monitor_30hz_r3',
         'monitor_60hz_r1', 'monitor_60hz_r2', 'monitor_60hz_r3',
         'monitor_standby_r1', 'monitor_standby_r2', 'monitor_standby_r3'
     ]

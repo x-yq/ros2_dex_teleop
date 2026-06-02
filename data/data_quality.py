@@ -146,11 +146,12 @@ def inspect_hdf5_structure(h5_path):
 
 if __name__ == "__main__":
     # Configuration, use no monitor and no latency
-    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_noLatency_noMonitor_60_final/HZ_d1_noLatency_noMonitor_60_r2_buffer.h5"
-    demo_id = "HZ_d1_60"
-    robot_latency_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz/LATENCY_robot_control_cmd.log"
-    gripper_latency_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz/LATENCY_gripper_control_cmd.log"
-    
+    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/HZ_center_noLatency_noMonitor_30/HZ_center_noLatency_30_buffer.h5"
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/HZ_center_noLatency_noMonitor_60/HZ_center_noLatency_60_buffer.h5"
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_noLatency_noMonitor_60/HZ_d1_noLatency_noMonitor_60_r2_buffer.h5"
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_noLatency_noMonitor_30/HZ_d1_noLatency_noMonitor_30_buffer.h5"
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/motion_acc_latency/HZ_d2_noLatency_noMonitor_30/HZ_d2_noLatency_noMonitor_30_buffer.h5"
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/motion_acc_latency/HZ_d2_noLatency_noMonitor_60/HZ_d2_noLatency_noMonitor_60_buffer.h5"
     # Inspect structure
     inspect_hdf5_structure(h5_path)
     
@@ -159,15 +160,16 @@ if __name__ == "__main__":
     ts_state, _ = load_hdf5_data(h5_path, "robot_state/end_effector_pose")
     
     evaluate_timing_quality(
-	    ts_cmd,
-	    expected_freq=60,
-	    name="Robot Command"
-	)
-
-    evaluate_timing_quality(
 	    ts_state,
 	    expected_freq=90,
 	    name="Robot State"
+	)
+
+    HZ_int = int(h5_path.split("/")[9].split("_")[-1])
+    evaluate_timing_quality(
+	    ts_cmd,
+	    expected_freq=HZ_int,
+	    name="Robot Command"
 	)
 
     # ===== Cross-topic alignment =====
