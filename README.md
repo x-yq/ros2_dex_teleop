@@ -1,9 +1,5 @@
 # xArm5 Teleoperation System — Usage Guide
 
-> **Note:** This document is a work in progress. Future sections will cover individual package descriptions, resource usage monitoring, latency measurement, data collection, and system start/pause control via ROS2 service calls. For now this guide focuses on getting the system deployed and running.
-
----
-
 ## Overview
 
 This repository contains a complete xArm5 teleoperation system built on ROS2 Humble. The system consists of four Docker containers plus two peripheral devices:
