@@ -50,6 +50,7 @@ def parse_log_file(filepath):
                 container_name = container_name.replace("ubuntu_", "")
                 container_name = container_name.replace("teleop-", "")
                 container_name = container_name.replace("teleop_", "")
+                container_name = container_name.replace('components', 'algorithm')
                 break
     
     if not container_name:
@@ -123,7 +124,12 @@ def collect_data(root_folder):
         
         for freq in FREQUENCIES:
             for round_num in ROUNDS:
+                if mode=='centered' and freq == '30hz' and round_num == 'r1':
+                    print(mode, freq, round_num)
+                    continue
+                
                 subfolder_name = f"monitor_{freq}_{round_num}"
+
                 subfolder_path = mode_path / subfolder_name
                 
                 if not subfolder_path.exists():
@@ -170,7 +176,7 @@ def create_grouped_boxplot(data_structure, metric, ylabel, filename):
         ylabel: Label for y-axis
         filename: Output filename
     """
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
     fig.suptitle(f'{ylabel} by Container and Mode', fontsize=16, fontweight='bold')
     
     for idx, freq in enumerate(FREQUENCIES):
@@ -249,22 +255,22 @@ def main():
     print("Collecting data from log files...")
     data_structure = collect_data(ROOT_FOLDER)
     
-    # Check if data was collected
-    data_found = False
-    for freq in FREQUENCIES:
-        for mode in MODES:
-            if data_structure[freq][mode]:
-                data_found = True
-                break
-        if data_found:
-            break
+    # # Check if data was collected
+    # data_found = False
+    # for freq in FREQUENCIES:
+    #     for mode in MODES:
+    #         if data_structure[freq][mode]:
+    #             data_found = True
+    #             break
+    #     if data_found:
+    #         break
     
-    if not data_found:
-        print("No data found! Please check:")
-        print(f"1. ROOT_FOLDER is set correctly (currently: {ROOT_FOLDER})")
-        print(f"2. Folder structure is: <mode>/{RESOURCE_USAGE_FOLDER}/monitor_<freq>_<round>/*.log")
-        print(f"3. Log files exist in the expected locations")
-        return
+    # if not data_found:
+    #     print("No data found! Please check:")
+    #     print(f"1. ROOT_FOLDER is set correctly (currently: {ROOT_FOLDER})")
+    #     print(f"2. Folder structure is: <mode>/{RESOURCE_USAGE_FOLDER}/monitor_<freq>_<round>/*.log")
+    #     print(f"3. Log files exist in the expected locations")
+    #     return
     
     print("\nCreating visualizations...")
     
@@ -273,7 +279,7 @@ def main():
         data_structure,
         metric='cpu_percent',
         ylabel='CPU Usage (%)',
-        filename='cpu_usage_boxplot.png'
+        filename='cpu_usage_boxplot_comprision.png'
     )
     
     # Create Memory boxplot
@@ -281,7 +287,7 @@ def main():
         data_structure,
         metric='mem_process_mib',
         ylabel='Memory Usage (MiB)',
-        filename='memory_usage_boxplot.png'
+        filename='memory_usage_boxplot_comprision.png'
     )
     
     print("\nVisualization complete!")

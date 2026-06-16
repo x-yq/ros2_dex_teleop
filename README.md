@@ -449,7 +449,48 @@ ros2 service call /monitor_ubuntu_teleop_components/stop_monitor \
 
 ## Step 9.3 — Start / Stop Data Collection
 
-> 📌 **Coming soon:** Detailed instructions for starting and pausing the teleoperation session via ROS2 service calls will be added here once the service interface is finalized.
+
+Unlike the per-container monitor nodes, data collection is controlled through a single pair of global services: `/start_data_collection` and `/stop_data_collection`. Both take a `demo_id` string that identifies the session, and this same identifier is used to name the output files.
+
+**Start a recording session:**
+
+```bash
+ros2 service call \
+  /start_data_collection \
+  system_interfaces/srv/StartDataCollection \
+  "{demo_id: 'example'}"
+```
+
+**Stop a recording session:**
+
+```bash
+ros2 service call \
+  /stop_data_collection \
+  system_interfaces/srv/StopDataCollection \
+  "{demo_id: 'example'}"
+```
+
+> ⚠️ **Order matters:** call `start_data_collection` *before* `start` on `/system_control`, and call `stop_data_collection` *after* `pause`. This way the recorded window covers the full teleoperation run rather than missing the first or last messages.
+
+> 📄 If you need to override the default topic list or storage path for a specific session instead of using the values in `config_files/demo.yaml`, check the `StartDataCollection` srv definition for optional fields — the basic call above only needs `demo_id`.
+
+A full run looks like this:
+
+```bash
+DEMO="Example"
+
+ros2 service call /start_data_collection system_interfaces/srv/StartDataCollection "{demo_id: '${DEMO}'}"
+sleep 3
+
+ros2 service call /system_control system_interfaces/srv/SystemControl "{description: 'start'}"
+# ... perform teleoperation ...
+ros2 service call /system_control system_interfaces/srv/SystemControl "{description: 'pause'}"
+
+ros2 service call /stop_data_collection system_interfaces/srv/StopDataCollection "{demo_id: '${DEMO}'}"
+sleep 5
+```
+
+For details on how topics map to recorded features, and how to change the default topic list and storage path, see the [Data Collection doc](config_files/docs/data_collector.md).
 
 ---
 

@@ -25,10 +25,18 @@ def load_hdf5_data(h5_path, feature_name):
                 group = group[part]
             else:
                 raise KeyError(f"Feature {feature_name} not found in HDF5 file")
-        
+            
         timestamps = group["timestamps"][:]
         data = group["data"][:]
     
+    def compute_hz(timestamps):
+        """Compute average publishing rate in Hz from a timestamp array (nanoseconds)."""
+        if len(timestamps) < 2:
+            return 0.0
+        duration_s = (timestamps[-1] - timestamps[0]) / 1e9
+        return (len(timestamps) - 1) / duration_s
+    print(f"  Rates — cmd: {compute_hz(timestamps):.1f} Hz ({len(timestamps)} samples), "
+      f"state: {compute_hz(timestamps):.1f} Hz ({len(timestamps)} samples)")
     print(f"length of data of {feature_name} = {len(timestamps)}")
     return timestamps, data
 
@@ -160,7 +168,7 @@ def plot_robot_and_gripper_with_latency(h5_path, robot_latency_path, gripper_lat
         if len(robot_rtt) > 0:
             ax_robot_rtt.scatter(
                 robot_time, robot_rtt,
-                label='Robot RTT', s=30, alpha=0.6, marker='o',
+                label='Robot Latency', s=30, alpha=0.6, marker='o',
                 color='red', edgecolors='darkred', linewidth=0.5
             )
 
@@ -180,6 +188,7 @@ def plot_robot_and_gripper_with_latency(h5_path, robot_latency_path, gripper_lat
     ax_robot.set_xlabel('Time (s)', fontsize=12)
     ax_robot.set_ylabel('Translation (m)', fontsize=12, color='black')
     ax_robot_rtt.set_ylabel('RTT (ms)', fontsize=12, color='red')
+    ax_robot_rtt.set_ylim(0, 200) #TODO
     ax_robot_rtt.tick_params(axis='y', labelcolor='red')
     ax_robot.set_title('Robot End-Effector Position (Command vs State) with RTT', 
                        fontsize=14, fontweight='bold')
@@ -233,7 +242,7 @@ def plot_robot_and_gripper_with_latency(h5_path, robot_latency_path, gripper_lat
     if len(gripper_rtt) > 0:
         gripper_time = (gripper_ts - reference_time_ms) / 1000.0  # Convert to seconds
         ax_gripper_rtt.scatter(gripper_time, gripper_rtt, 
-                              label='Gripper RTT', s=30, alpha=0.6, marker='s', 
+                              label='Gripper Latency', s=30, alpha=0.6, marker='s', 
                               color='red', edgecolors='darkred', linewidth=0.5)
         
         # Add statistics text
@@ -247,6 +256,8 @@ def plot_robot_and_gripper_with_latency(h5_path, robot_latency_path, gripper_lat
     ax_gripper.set_xlabel('Time (s)', fontsize=12)
     ax_gripper.set_ylabel('Joint Angle (rad)', fontsize=12, color='black')
     ax_gripper_rtt.set_ylabel('RTT (ms)', fontsize=12, color='red')
+    # ax_gripper_rtt.set_ylim(10, 25) #TODO
+
     ax_gripper_rtt.tick_params(axis='y', labelcolor='red')
     ax_gripper.set_title('Gripper Joint Angles (Command vs State) with RTT', 
                         fontsize=14, fontweight='bold')
@@ -305,21 +316,30 @@ def plot_detailed_comparison(h5_path, demo_id=None, save_path=None):
             ax.legend(loc='best')
             ax.grid(True, alpha=0.3)
             
-            # Calculate tracking error
-            cmd_interp = np.interp(time_state, time_cmd, translation_cmd[:, i])
-            error = translation_state[:, i] - cmd_interp
+            # # Calculate tracking error
+            # cmd_interp = np.interp(time_state, time_cmd, translation_cmd[:, i])
+            # error = translation_state[:, i] - cmd_interp
+
+            state_interp = np.interp(time_cmd, time_state, translation_state[:, i])
+            error = state_interp - translation_cmd[:, i]
             
             ax_error = fig.add_subplot(gs[i, 1])
-            ax_error.plot(time_state, error * 1000, linewidth=1.5, color='red')
+            ax_error.plot(time_cmd, error * 1000, linewidth=1.5, color='red')
             ax_error.axhline(y=0, color='black', linestyle='--', linewidth=0.8, alpha=0.5)
             ax_error.set_xlabel('Time (s)', fontsize=11)
             ax_error.set_ylabel('Tracking Error (mm)', fontsize=11)
+            ax_error.set_ylim(-80,80) #TODO
             ax_error.set_title(f'Robot {axes_labels[i]} Error', fontsize=12, fontweight='bold')
             ax_error.grid(True, alpha=0.3)
             
             # Print statistics
-            print(f"  {axes_labels[i]} - Mean error: {np.mean(np.abs(error))*1000:.3f} mm, "
-                  f"Max error: {np.max(np.abs(error))*1000:.3f} mm")
+            # print(f"  {axes_labels[i]} - Mean error: {np.mean(np.abs(error))*1000:.3f} mm, "
+            #       f"Max error: {np.max(np.abs(error))*1000:.3f} mm")
+            
+            err_mm = error * 1000
+            print(f"  {axes_labels[i]} - Mean |error|: {np.mean(np.abs(err_mm)):.3f} mm, "
+                  f"Max |error|: {np.max(np.abs(err_mm)):.3f} mm, "
+                  f"Range: [{err_mm.min():.3f}, {err_mm.max():.3f}] mm")
         
         print(f"✓ Robot detailed comparison completed")
         
@@ -339,108 +359,6 @@ def plot_detailed_comparison(h5_path, demo_id=None, save_path=None):
         print(f"\n✓ Figure saved to: {save_file}")
     
     plt.close()
-    
-def evaluate_timing_quality(timestamps_ns, expected_freq, name="signal"):
-    """
-    Evaluate timing quality of a timestamp sequence.
-
-    Args:
-        timestamps_ns: 1D numpy array, nanoseconds
-        expected_freq: expected frequency in Hz
-        name: name for logging
-
-    Returns:
-        dict with timing metrics
-    """
-    timestamps_ns = np.asarray(timestamps_ns)
-
-    if len(timestamps_ns) < 2:
-        print(f"[{name}] Not enough samples for timing analysis")
-        return None
-
-    # convert to seconds
-    t = timestamps_ns / 1e9
-    dt = np.diff(t)
-
-    expected_dt = 1.0 / expected_freq
-
-    monotonic = np.all(dt > 0)
-    backward_count = np.sum(dt <= 0)
-
-    metrics = {
-        "num_samples": len(timestamps_ns),
-        "duration_s": t[-1] - t[0],
-        "mean_dt": np.mean(dt),
-        "std_dt": np.std(dt),
-        "max_jitter": np.max(np.abs(dt - expected_dt)),
-        "expected_dt": expected_dt,
-        "monotonic": monotonic,
-        "backward_count": backward_count,
-    }
-
-    print(f"\n=== Timing Evaluation: {name} ===")
-    print(f"Samples        : {metrics['num_samples']}")
-    print(f"Duration       : {metrics['duration_s']:.3f} s")
-    print(f"Expected Δt    : {expected_dt*1000:.3f} ms")
-    print(f"Mean Δt        : {metrics['mean_dt']*1000:.3f} ms")
-    print(f"Std(Δt)        : {metrics['std_dt']*1000:.3f} ms")
-    print(f"Max |Δt-Δt₀|   : {metrics['max_jitter']*1000:.3f} ms")
-    print(f"Monotonic      : {monotonic}")
-    if backward_count > 0:
-        print(f"⚠ Time went backward {backward_count} times")
-
-    return metrics
-
-def evaluate_cross_topic_alignment(
-    timestamps_state_ns,
-    timestamps_cmd_ns,
-    name="state-command alignment"
-):
-    """
-    Evaluate timestamp alignment between two topics with different frequencies.
-
-    Uses nearest-neighbor matching.
-
-    Args:
-        timestamps_state_ns: state timestamps (ns)
-        timestamps_cmd_ns: command timestamps (ns)
-
-    Returns:
-        dict with alignment metrics
-    """
-    t_state = np.asarray(timestamps_state_ns) / 1e9
-    t_cmd = np.asarray(timestamps_cmd_ns) / 1e9
-
-    if len(t_state) == 0 or len(t_cmd) == 0:
-        print(f"[{name}] Empty timestamps")
-        return None
-
-    deltas = []
-
-    cmd_idx = 0
-    for ts in t_state:
-        while cmd_idx + 1 < len(t_cmd) and abs(t_cmd[cmd_idx + 1] - ts) < abs(t_cmd[cmd_idx] - ts):
-            cmd_idx += 1
-        deltas.append(abs(ts - t_cmd[cmd_idx]))
-
-    deltas = np.asarray(deltas)
-
-    metrics = {
-        "num_pairs": len(deltas),
-        "mean_abs_dt": np.mean(deltas),
-        "std_abs_dt": np.std(deltas),
-        "max_abs_dt": np.max(deltas),
-        "p95_abs_dt": np.percentile(deltas, 95),
-    }
-
-    print(f"\n=== Cross-Topic Alignment: {name} ===")
-    print(f"Pairs          : {metrics['num_pairs']}")
-    print(f"Mean |Δt|      : {metrics['mean_abs_dt']*1000:.3f} ms")
-    print(f"Std  |Δt|      : {metrics['std_abs_dt']*1000:.3f} ms")
-    print(f"P95  |Δt|      : {metrics['p95_abs_dt']*1000:.3f} ms")
-    print(f"Max  |Δt|      : {metrics['max_abs_dt']*1000:.3f} ms")
-
-    return metrics
 
 
 def inspect_hdf5_structure(h5_path):
@@ -461,49 +379,56 @@ def inspect_hdf5_structure(h5_path):
     print()
 
 if __name__ == "__main__":
-    # Configuration
-    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_noLatency_noMonitor_60_final/HZ_d1_noLatency_noMonitor_60_r2_buffer.h5"
-    demo_id = "HZ_d1_60"
-    robot_latency_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz/LATENCY_robot_control_cmd.log"
-    gripper_latency_path = "/home/x-yq/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz/LATENCY_gripper_control_cmd.log"
+    # Configuration, use with latency no monitor
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/HZ_noMonitor_wLatency_30/HZ_30_buffer.h5"
+    # demo_id = "HZ_30_centered"
+    # robot_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/latency_30hz/LATENCY_robot_control_cmd.log"
+    # gripper_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/latency_30hz/LATENCY_gripper_control_cmd.log"
+
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/HZ_noMonitor_wLatency_60/HZ_60_buffer.h5"
+    # demo_id = "HZ_60_centered"
+    # robot_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/latency_60hz/LATENCY_robot_control_cmd.log"
+    # gripper_latency_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/centered/motion_acc_latency/latency_60hz/LATENCY_gripper_control_cmd.log"
+
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_30_final/HZ_d1_30_buffer.h5"
+    # demo_id = "HZ_30_d1"
+    # latency_root = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/latency_30hz_final"
+    # robot_latency_path = f"{latency_root}/LATENCY_robot_control_cmd.log"
+    # gripper_latency_path = f"{latency_root}/LATENCY_gripper_control_cmd.log"
+        
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/HZ_d1_60/HZ_d1_60_buffer.h5"
+    # demo_id = "HZ_60_d1"
+    # latency_root = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed1/motion_acc_latency/latency_60hz"
+    # robot_latency_path = f"{latency_root}/LATENCY_robot_control_cmd.log"
+    # gripper_latency_path = f"{latency_root}/LATENCY_gripper_control_cmd.log"
+
+    # h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/motion_acc_latency/HZ_d2_30/HZ_d2_30_buffer.h5"
+    # demo_id = "HZ_30_d2"
+    # latency_root = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/motion_acc_latency/latency_30hz"
+    # robot_latency_path = f"{latency_root}/LATENCY_robot_control_cmd.log"
+    # gripper_latency_path = f"{latency_root}/LATENCY_gripper_control_cmd.log"
+
+    h5_path = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/motion_acc_latency/HZ_d2_noLatency_noMonitor_60/HZ_d2_noLatency_noMonitor_60_buffer.h5"
+    demo_id = "HZ_60_d2"
+    latency_root = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/distributed2/motion_acc_latency/latency_60hz"
+    robot_latency_path = f"{latency_root}/LATENCY_robot_control_cmd.log"
+    gripper_latency_path = f"{latency_root}/LATENCY_gripper_control_cmd.log"
     
     # Inspect structure
     inspect_hdf5_structure(h5_path)
     
-    # # Main plot: Robot translation + Gripper joints with RTT overlaid
-    # print("\n=== Creating Main Trajectory Plot with Latency ===")
-    # plot_robot_and_gripper_with_latency(
-    #     h5_path, 
-    #     robot_latency_path, 
-    #     gripper_latency_path,
-    #     demo_id=demo_id
-    # )
+    # Main plot: Robot translation + Gripper joints with RTT overlaid
+    print("\n=== Creating Main Trajectory Plot with Latency ===")
+    plot_robot_and_gripper_with_latency(
+        h5_path, 
+        robot_latency_path, 
+        gripper_latency_path,
+        demo_id=demo_id
+    )
     
-    # # Detailed analysis with tracking errors
-    # print("\n=== Creating Detailed Analysis Plot ===")
-    # plot_detailed_comparison(h5_path, demo_id=demo_id)
+    # Detailed analysis with tracking errors
+    print("\n=== Creating Detailed Analysis Plot ===")
+    plot_detailed_comparison(h5_path, demo_id=demo_id)
     
-    # print("\n✓ All plots completed!")
+    print("\n✓ All plots completed!")
     
-    # ===== Timing quality =====
-    ts_cmd, _ = load_hdf5_data(h5_path, "robot_control_cmd/pose")
-    ts_state, _ = load_hdf5_data(h5_path, "robot_state/end_effector_pose")
-    
-    evaluate_timing_quality(
-	    ts_cmd,
-	    expected_freq=60,
-	    name="Robot Command"
-	)
-
-    evaluate_timing_quality(
-	    ts_state,
-	    expected_freq=90,
-	    name="Robot State"
-	)
-
-    # ===== Cross-topic alignment =====
-    evaluate_cross_topic_alignment(
-	    ts_state,
-	    ts_cmd,
-	    name="Robot State vs Command"
-	)
