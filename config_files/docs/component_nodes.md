@@ -793,7 +793,7 @@ target_angle  =  0.85  if closed     (joint-space command)
 
 A `ControlCmd` is published only when the state changes, avoiding redundant messages.
 
-### Full Pipeline Summary
+<!-- ### Full Pipeline Summary
 
 ```
 ProcessedHandKeypoint (24×3 joints + 4×3 frame)
@@ -819,7 +819,7 @@ ProcessedHandKeypoint (24×3 joints + 4×3 frame)
             │
             ▼
   robot_control_cmd (cartesian, absolute)
-```
+``` -->
 
 ---
 
@@ -1078,7 +1078,7 @@ Rather than relying on a dedicated state topic from the robot SDK (which would b
 
 The gripper center pose is the element-wise mean of the right and left finger positions in the gripper base frame (`get_gripper_center_pose`).
 
----
+<!-- ---
 
 ### Full Command Flow
 
@@ -1126,7 +1126,7 @@ joint_state_callback()                                        (robot_state_publi
          publish_state()  [timer @ freq Hz]             get_eef_pose_from_tf()
          ├── RobotState (robot_state)
          └── RobotState (gripper_state)
-```
+``` -->
 
 
 ---
@@ -1522,7 +1522,7 @@ None. `VRDriver` is a **pure sink** in the ROS2 topic graph. All outbound data i
 
 Both sockets **bind** on the local machine; the VR application **connects** to them from the execution platform. Each message is a raw JPEG byte buffer.
 
----
+<!-- ---
 
 ## Data Flow Summary
 
@@ -1549,7 +1549,7 @@ component_interfaces/Hand2DPlotData
   _rescale_image (×4) → RGB
           │
           └──► hand_2d_zmq_publisher ──► TCP port 15001 ──► Overlay panel
-```
+``` -->
 
 ---
 

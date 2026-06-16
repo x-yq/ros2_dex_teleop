@@ -686,7 +686,7 @@ To stop the simulator:
 python3 deploy_system.py --launch-env --stop
 ```
 
----
+<!-- ---
 
 ## Configuration File Cross-Reference
 
@@ -721,4 +721,4 @@ docker-compose.yaml ◄───────────────────
     all extend Dockerfile.base
     each COPYs its own ROS2 packages and runs colcon build
     base.launch.py lives in teleop_launcher/launch/ as the template
-```
+``` -->

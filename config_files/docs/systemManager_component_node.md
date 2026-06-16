@@ -111,7 +111,7 @@ On startup (and on the `checkup` command), `SystemManager` launches a background
 
 `_initialize_node()` is the sequence that brings a component from `disconnected` to `ready`. It must be called explicitly by the concrete subclass (typically at the end of its own `__init__`). Here is what happens in order:
 
-```
+<!-- ```
 _initialize_node()
     │
     ├─ Step 1: _load_root_configs()          ← defined in the concrete child class
@@ -124,7 +124,7 @@ _initialize_node()
                 │
                 ├─ True  → set_state("ready") + _publish_status()
                 └─ False → set_state("disconnected") + _publish_status()
-```
+``` -->
 
 **Step 1 — `_load_root_configs()`**
 
@@ -192,7 +192,7 @@ The concrete subclass verifies that plugin objects (e.g. a camera driver, a sens
 | `load_component_node_config()` | Per-component config file |
 | `load_my_config()` | Shortcut for own component config |
 
----
+<!-- ---
 
 # 2. Communication Between SystemManager and ComponentNode
 
@@ -230,7 +230,7 @@ The concrete subclass verifies that plugin objects (e.g. a camera driver, a sens
 │  /logging           ┼
 │  /get_config   ─────┼
 └─────────────────────┘
-```
+``` -->
 
 **Channel 1 — `component_states` topic** (Component → SystemManager, one-way): Each component publishes `ComponentStatus` whenever its state changes. SystemManager subscribes and updates `component_statuses`.
 
@@ -336,7 +336,7 @@ def register_timer(self):
     self.compo_timers.append(timer)
 ```
 
-**Full flow when SystemManager sends `start`:**
+<!-- **Full flow when SystemManager sends `start`:**
 
 ```
 SystemManager._send_command_to_all_components_async("start")
@@ -349,7 +349,7 @@ SystemManager._send_command_to_all_components_async("start")
             └─ start_component()
                 ├─ [if first time] register_timer()  ← creates timers, they start firing
                 └─ [if resuming]   timer.reset()     ← restarts each cancelled timer
-```
+``` -->
 
 ---
 
@@ -364,7 +364,7 @@ def pause_component(self):
 
 `timer.cancel()` stops the timer from firing any more callbacks. The timer object is **not destroyed** — it stays in `self.compo_timers` so it can be `reset()` on the next `start`. The component's ROS2 node keeps spinning, publishers and subscribers stay registered, and state becomes `ready`. It simply stops producing data.
 
-**Full flow when SystemManager sends `pause`:**
+<!-- **Full flow when SystemManager sends `pause`:**
 
 ```
 SystemManager._send_command_to_all_components_async("pause")
@@ -376,7 +376,7 @@ SystemManager._send_command_to_all_components_async("pause")
             │
             └─ pause_component()
                 └─ for each timer: timer.cancel()
-```
+``` -->
 
 ---
 
@@ -402,7 +402,7 @@ def stop_component(self):
 
 `stop_component()` handles generic cleanup (cancel timers, remove network latency shaping). `urgent_stop()` is where the concrete subclass does hardware-specific work: closing serial connections, stopping motors, flushing buffers, disabling actuators, etc.
 
-**State diagram across all lifecycle commands:**
+<!-- **State diagram across all lifecycle commands:**
 
 ```
          checkup OK
@@ -416,7 +416,7 @@ disconnected ──────────────► paused/ready
      │
      │  urgent_stop (from running/paused)
      └──────────────────────────┘
-```
+``` -->
 
 **Key differences between pause and stop:**
 
@@ -436,7 +436,7 @@ disconnected ──────────────► paused/ready
 
 Rather than using synthetic test messages, latency is measured on the actual data flowing between nodes. The publisher node stamps each message with a unique ID and records the send time. A subscriber node echoes the message back on a shadow topic (`{topic_id}_pong`). When the echo arrives back at the publisher, the round-trip time (RTT) is computed. One-way latency is estimated as `RTT / 2`.
 
-```
+<!-- ```
 Publisher Node                          Subscriber Node
       │                                       │
       │── stamp msg with send_id ──►          │
@@ -447,7 +447,7 @@ Publisher Node                          Subscriber Node
       │◄── receive on /topic_id_pong ─────────│
       │── compute RTT = recv_time - send_time │
       │── log: one_way_latency = RTT / 2      │
-```
+``` -->
 
 ---
 
