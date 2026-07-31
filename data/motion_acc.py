@@ -65,7 +65,7 @@ def parse_latency_log(log_path):
         rtt_values = np.array(rtt_values)
         timestamps = np.array(timestamps)
         
-        print(f"✓ Loaded {len(rtt_values)} RTT samples from {Path(log_path).name}")
+        print(f"Loaded {len(rtt_values)} RTT samples from {Path(log_path).name}")
         print(f"  RTT range: {rtt_values.min():.2f} - {rtt_values.max():.2f} ms")
         print(f"  RTT mean: {rtt_values.mean():.2f} ms, std: {rtt_values.std():.2f} ms")
         

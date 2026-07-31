@@ -12,7 +12,7 @@ import numpy as np
 from pathlib import Path
 
 # Configuration
-ROOT_FOLDER = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data"  # Change this to your root folder path
+ROOT_FOLDER = "/Users/x-yq/Desktop/MasterThesis/teleop_dev/data"
 MODES = ["centered", "distributed1", "distributed2"]
 FREQUENCIES = ["standby", "30hz", "60hz"]
 ROUNDS = ["r1", "r2", "r3"]
@@ -252,7 +252,7 @@ def create_grouped_boxplot(data_structure, metric, ylabel, filename):
 
 
 def main():
-    print("Collecting data from log files...")
+
     data_structure = collect_data(ROOT_FOLDER)
     
     # # Check if data was collected
@@ -272,7 +272,6 @@ def main():
     #     print(f"3. Log files exist in the expected locations")
     #     return
     
-    print("\nCreating visualizations...")
     
     # Create CPU boxplot
     create_grouped_boxplot(
@@ -290,7 +289,6 @@ def main():
         filename='memory_usage_boxplot_comprision.png'
     )
     
-    print("\nVisualization complete!")
     print("Generated files:")
     print("  - cpu_usage_boxplot.png")
     print("  - memory_usage_boxplot.png")

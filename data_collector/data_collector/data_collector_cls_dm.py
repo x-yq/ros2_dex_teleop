@@ -764,23 +764,19 @@ class DataCollector(ComponentNode):
                             field_value = None
                             break
 
-                    # ---------- NEW: skip empty raw field values ----------
                     if self._is_empty_field(field_value):
                         self.get_logger().debug(
                             f"Skipping {feature_name} - empty field value"
                         )
                         continue
-                    # ------------------------------------------------------
 
                     numpy_data = self._convert_field_to_numpy(feature_name, field_value)
 
-                    # ---------- NEW: skip empty converted values ----------
                     if self._is_empty_field(numpy_data):
                         self.get_logger().debug(
                             f"Skipping {feature_name} - empty converted data"
                         )
                         continue
-                    # -----------------------------------------------------
 
                     # Convert to numpy and add to trajectory
                     if numpy_data is not None:

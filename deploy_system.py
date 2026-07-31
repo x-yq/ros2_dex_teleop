@@ -233,10 +233,10 @@ def stop_containers(executor: RemoteExecutor, containers: List[str], compose_fil
     compose_cmd = f"docker compose -f {compose_file_path} stop {container_list}"
     try:
         executor.execute(compose_cmd)
-        print("✓ Successfully stopped containers")
+        print("Successfully stopped containers")
         return True
     except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to stop containers: {e.stderr}")
+        print(f"Failed to stop containers: {e.stderr}")
         return False
 
 
@@ -255,7 +255,7 @@ def deploy_platform(
     hardware_id = platform_config['hardware_id']
     containers = platform_config.get('containers', [])
     if not containers:
-        print(f"✗ No containers specified for platform {hardware_id}")
+        print(f"No containers specified for platform {hardware_id}")
         return
 
     # Identify environment container
@@ -265,7 +265,7 @@ def deploy_platform(
     # Determine which to deploy
     if launch_env:
         if not env_containers:
-            print(f"✗ No simulator container defined in {hardware_id}")
+            print(f"No simulator container defined in {hardware_id}")
             return
         target_containers = env_containers
         print(f"Launching simulator on host (ignoring hardware_id {hardware_id})")
@@ -280,7 +280,7 @@ def deploy_platform(
 
     # Verify existence in compose file
     if not verify_docker_compose_services(compose_config, container_names):
-        print(f"✗ Cannot deploy {hardware_id}: container missing in compose file")
+        print(f"Cannot deploy {hardware_id}: container missing in compose file")
         return
 
     if launch_env:
@@ -292,11 +292,11 @@ def deploy_platform(
         # Create executor
         hw_info = get_hardware_info(hardware_id, hardware_config)
         if hw_info is None:
-            print(f"✗ hardware_id '{hardware_id}' not found in hardware.yaml")
+            print(f"hardware_id '{hardware_id}' not found in hardware.yaml")
             return
         ip_address = hw_info.get('ip', '').strip()
         if not ip_address:
-            print(f"✗ No IP address defined for hardware_id '{hardware_id}'")
+            print(f"No IP address defined for hardware_id '{hardware_id}'")
             return
         # Read SSH credentials from hardware.yaml
         ssh_user = hw_info.get('ssh_user') or None
@@ -324,7 +324,7 @@ def deploy_platform(
             remote_home = f"/home/{ssh_user or 'root'}"
             remote_repo_path = sync_repo_to_remote(executor, remote_home)
             if not remote_repo_path:
-                print(f"X Aborting deployment of {hardware_id}: repo sync failed")
+                print(f"Aborting deployment of {hardware_id}: repo sync failed")
                 return
             # Make compose file path absolute on the remote
             compose_file_path = os.path.join(remote_repo_path, compose_file_path)

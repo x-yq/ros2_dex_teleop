@@ -178,7 +178,7 @@ def create_grouped_boxplot(data, metric, ylabel, title, filename):
 def main():
     # Configuration
     mode = "centered"
-    data_folder = f'/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/{mode}/resource_usage_final'  # Change this to your data folder path
+    data_folder = f'/Users/x-yq/Desktop/MasterThesis/teleop_dev/data/{mode}/resource_usage_final' 
     subfolders = [
         'monitor_30hz_r2', 'monitor_30hz_r3',
         'monitor_60hz_r1', 'monitor_60hz_r2', 'monitor_60hz_r3',
@@ -197,8 +197,6 @@ def main():
     print(f"Containers found: {df['container_name'].unique()}")
     print(f"Frequencies: {df['frequency'].unique()}")
     
-    # Create visualizations
-    print("\nCreating visualizations...")
     
     # CPU percent boxplot
     create_grouped_boxplot(
