@@ -263,7 +263,6 @@ def main():
     print("\nGenerating Memory usage boxplots...")
     create_grouped_boxplots(all_data, 'Memory Process (MiB)', 2)
     
-    print("\nVisualization complete! Check the output folder for generated plots.")
 
 if __name__ == '__main__':
     main()
