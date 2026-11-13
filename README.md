@@ -644,3 +644,12 @@ For more details please see the following docs.
 - **Components Descriptions** — what each ROS2 package, i.e. the how pipeline does, see the [Doc]((config_files/docs/components.md))
 
 - **Simulator Setup** — full Gazebo environment setup, display configuration, and xArm5 model installation on Ubuntu x86, see the [Doc](config_files/docs/xarm5_gazebo_simulation.md)
+
+
+# References
+
+[1] UFACTORY, “xarm_ros2: ROS2 developer packages for robotic products from UFACTORY.” GitHub repository. Available: https://github.com/xArm-Developer/xarm_ros2. (Accessed: 13 Nov. 2026).
+
+[2] A. Iyer, Z. Peng, Y. Dai, I. Guzey, S. Haldar, S. Chintala, and L. Pinto, “OPEN TEACH: A Versatile Teleoperation System for Robotic Manipulation,” arXiv:2403.07870, 2024. Available: https://arxiv.org/abs/2403.07870. Project page: https://open-teach.github.io/; source code: https://github.com/whoiscjq/Open-Teach.
+
+[3] S. Scherzinger, A. Roennau, and R. Dillmann, “Forward Dynamics Compliance Control (FDCC): A new approach to cartesian compliance for robotic manipulators,” in Proc. IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS), 2017, pp. 4568–4575, doi: 10.1109/IROS.2017.8206325.
